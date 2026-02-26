@@ -20,14 +20,10 @@ function parseJSON(value, fallback) {
   }
 }
 
-function assertDbName(name) {
-  if (!/^[a-zA-Z0-9_]+$/.test(name)) {
-    throw new Error('DB_NAME must contain only letters, numbers, and underscore.');
-  }
-}
-
 function parseUrlOptions(rawUrl) {
   const parsed = new URL(rawUrl);
+  const sslFromQuery = parsed.searchParams.get('ssl') || parsed.searchParams.get('sslmode');
+  const shouldUseSslFromQuery = ['true', '1', 'require', 'required'].includes(String(sslFromQuery || '').toLowerCase());
   const options = {
     host: parsed.hostname,
     port: Number(parsed.port || 3306),
@@ -39,10 +35,10 @@ function parseUrlOptions(rawUrl) {
   };
 
   if (!options.database) {
-    options.database = getEnv('DB_NAME', 'auction_system');
+    options.database = getEnv('DB_NAME', getEnv('MYSQLDATABASE', 'auction_system'));
   }
 
-  if (toBool(getEnv('DB_SSL', 'false'))) {
+  if (toBool(getEnv('DB_SSL', 'false')) || shouldUseSslFromQuery) {
     options.ssl = { rejectUnauthorized: false };
   }
 
@@ -50,7 +46,7 @@ function parseUrlOptions(rawUrl) {
 }
 
 function getDbOptions(includeDatabase = true, forceNoDatabase = false) {
-  const dbUrl = getEnv('DATABASE_URL', '') || getEnv('MYSQL_URL', '');
+  const dbUrl = getEnv('DATABASE_URL', '') || getEnv('MYSQL_URL', '') || getEnv('MYSQL_URL_PUBLIC', '');
   if (dbUrl) {
     const urlOptions = parseUrlOptions(dbUrl);
     if (forceNoDatabase) delete urlOptions.database;
@@ -58,14 +54,13 @@ function getDbOptions(includeDatabase = true, forceNoDatabase = false) {
     return urlOptions;
   }
 
-  const dbName = getEnv('DB_NAME', 'auction_system');
-  if (includeDatabase) assertDbName(dbName);
+  const dbName = getEnv('DB_NAME', getEnv('MYSQLDATABASE', 'auction_system'));
 
   const options = {
-    host: getEnv('DB_HOST', '127.0.0.1'),
-    port: Number(getEnv('DB_PORT', '3306')),
-    user: getEnv('DB_USER', 'root'),
-    password: getEnv('DB_PASSWORD', ''),
+    host: getEnv('DB_HOST', getEnv('MYSQLHOST', '127.0.0.1')),
+    port: Number(getEnv('DB_PORT', getEnv('MYSQLPORT', '3306'))),
+    user: getEnv('DB_USER', getEnv('MYSQLUSER', 'root')),
+    password: getEnv('DB_PASSWORD', getEnv('MYSQLPASSWORD', '')),
     waitForConnections: true,
     connectionLimit: 10,
   };
@@ -101,7 +96,7 @@ async function connectDB() {
   const { database } = fullOptions;
 
   // Some managed DB users cannot create databases; attempt and continue on access errors.
-  if (!getEnv('DATABASE_URL', '') && !getEnv('MYSQL_URL', '')) {
+  if (!getEnv('DATABASE_URL', '') && !getEnv('MYSQL_URL', '') && !getEnv('MYSQL_URL_PUBLIC', '')) {
     const bootstrap = mysql.createPool(getDbOptions(false, true));
     try {
       await bootstrap.query(`CREATE DATABASE IF NOT EXISTS \`${database}\``);

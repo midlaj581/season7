@@ -63,5 +63,19 @@ connectDB()
   })
   .catch((error) => {
     console.error('Failed to start server:', error);
+    console.error('DB env detected:', {
+      DATABASE_URL: !!process.env.DATABASE_URL,
+      MYSQL_URL: !!process.env.MYSQL_URL,
+      MYSQL_URL_PUBLIC: !!process.env.MYSQL_URL_PUBLIC,
+      MYSQLHOST: !!process.env.MYSQLHOST,
+      MYSQLPORT: !!process.env.MYSQLPORT,
+      MYSQLUSER: !!process.env.MYSQLUSER,
+      MYSQLDATABASE: !!process.env.MYSQLDATABASE,
+      DB_HOST: !!process.env.DB_HOST,
+      DB_PORT: !!process.env.DB_PORT,
+      DB_USER: !!process.env.DB_USER,
+      DB_NAME: !!process.env.DB_NAME,
+      DB_SSL: process.env.DB_SSL || null,
+    });
     process.exit(1);
   });
