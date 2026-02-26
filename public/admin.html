@@ -320,7 +320,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
   <span>Open on screens →</span>
   <a href="/projector.html" target="_blank">🖥 Projector</a>
   <a href="/manager.html" target="_blank">👤 Manager</a>
-  <span class="kbd-hint">Shortcuts: `S` sold, `U` unsold, `Z` undo, `R` revert sale, `I` idle, `/` search</span>
+  <span class="kbd-hint">Shortcuts: `S` sold, `U` unsold, `Z` undo, `P` stop timer, `O` resume timer, `R` revert sale, `I` idle, `/` search</span>
 </div>
 
 <div class="layout">
@@ -381,6 +381,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
         <button class="btn btn-green" id="btnSold"   onclick="doSold()"   disabled>🔨 SOLD!</button>
         <button class="btn btn-red"   id="btnUnsold" onclick="doUnsold()" disabled>✗ UNSOLD</button>
         <button class="btn btn-undo"  id="btnUndo"   onclick="doUndo()"   disabled>↩ UNDO</button>
+        <button class="btn btn-ghost" id="btnStopTimer" onclick="doStopTimer()" disabled>⏸ Stop Timer</button>
+        <button class="btn btn-ghost" id="btnResumeTimer" onclick="doResumeTimer()" disabled>▶ Resume</button>
         <button class="btn btn-ghost" id="btnRevertSale" onclick="doRevertLastSold()" disabled>↺ Revert Sale</button>
         <button class="btn btn-ghost" onclick="doIdle()">↺ Reset</button>
       </div>
@@ -809,11 +811,16 @@ function renderStage(as, cfg) {
   const bS=document.getElementById('btnSold');
   const bU=document.getElementById('btnUnsold');
   const bR=document.getElementById('btnRevertSale');
+  const bStop=document.getElementById('btnStopTimer');
+  const bResume=document.getElementById('btnResumeTimer');
   bR.disabled=(as.phase==='live')||!(as.soldPlayers?.length);
+  const timerRunning=!!as.timerEndsAt&&as.phase==='live';
+  bStop.disabled=!timerRunning;
+  bResume.disabled=as.phase!=='live'||timerRunning;
   if(!p||phase==='idle'){
     idle.style.display='';content.style.display='none';nbb.style.display='none';
     document.getElementById('stageTimer').textContent='--';
-    bS.disabled=true;bU.disabled=true;return;
+    bS.disabled=true;bU.disabled=true;bStop.disabled=true;bResume.disabled=true;return;
   }
   idle.style.display='none';content.style.display='';nbb.style.display='flex';
   document.getElementById('sPhoto').src=p.photo;
@@ -833,7 +840,7 @@ function renderStage(as, cfg) {
   document.getElementById('nbbBase').textContent=`Base: ₹${p.basePrice}`;
   const thresh=cfg.thresholdBid??200;
   document.getElementById('nbbNote').textContent=currentBid<thresh?`→ +₹${cfg.lowIncrement} at ₹${thresh}`:`Using +₹${cfg.lowIncrement}`;
-  document.getElementById('stageTimer').textContent=`${as.timerRemaining ?? 0}s`;
+  document.getElementById('stageTimer').textContent=as.timerEndsAt?`${as.timerRemaining ?? 0}s`:'PAUSED';
   bS.disabled=!leadingTeam||phase!=='live';
   bU.disabled=phase!=='live';
 }
@@ -843,13 +850,14 @@ function renderTimer(phase, remaining) {
   const topVal = document.getElementById('topTimerVal');
   const stage = document.getElementById('stageTimer');
   const sec = Math.max(0, Number(remaining || 0));
+  const paused = phase === 'live' && !S?.auctionState?.timerEndsAt;
 
   if (phase === 'live') {
     top.className = 'timer-pill live';
-    if (sec <= 3) top.className += ' crit';
-    topVal.textContent = `${sec}s`;
-    stage.classList.toggle('crit', sec <= 3);
-    stage.textContent = `${sec}s`;
+    if (!paused && sec <= 3) top.className += ' crit';
+    topVal.textContent = paused ? 'PAUSED' : `${sec}s`;
+    stage.classList.toggle('crit', !paused && sec <= 3);
+    stage.textContent = paused ? 'PAUSED' : `${sec}s`;
   } else {
     top.className = 'timer-pill';
     topVal.textContent = '--';
@@ -1066,6 +1074,18 @@ function doSold(){if(confirm(`⚡ SOLD to ${S.auctionState.leadingTeam?.name} @ 
 function doUnsold(){socket.emit('admin:unsold');}
 function doIdle(){socket.emit('admin:idle');document.getElementById('btnUndo').disabled=true;}
 function doUndo(){socket.emit('admin:undoBid');}
+function doStopTimer(){
+  socket.emit('admin:stopTimer', {}, (resp)=>{
+    if(resp?.ok) return;
+    alert(resp?.error||'Could not stop timer.');
+  });
+}
+function doResumeTimer(){
+  socket.emit('admin:resumeTimer', {}, (resp)=>{
+    if(resp?.ok) return;
+    alert(resp?.error||'Could not resume timer.');
+  });
+}
 function doRevertLastSold(){
   if(!S.auctionState?.soldPlayers?.length){alert('No sold player to revert.');return;}
   if(S.auctionState?.phase==='live'){alert('Stop live auction before reverting sale.');return;}
@@ -1270,6 +1290,8 @@ document.addEventListener('keydown',e=>{
   if(e.key==='s'||e.key==='S') doSold();
   if(e.key==='u'||e.key==='U') doUnsold();
   if(e.key==='z'||e.key==='Z') doUndo();
+  if(e.key==='p'||e.key==='P') doStopTimer();
+  if(e.key==='o'||e.key==='O') doResumeTimer();
   if(e.key==='r'||e.key==='R') doRevertLastSold();
   if(e.key==='i'||e.key==='I') doIdle();
   if(e.key==='t'||e.key==='T') toggleTheme();

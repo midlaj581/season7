@@ -10,6 +10,8 @@ const {
   undoBid,
   markSold,
   markUnsold,
+  stopLiveTimer,
+  resumeLiveTimer,
   revertLastSold,
   setIdle,
   resetAuctionAndTeams,
@@ -176,6 +178,30 @@ function registerSocketHandlers(io) {
       broadcastState();
       io.emit('playerUnsold', { player });
       stopAuctionTimer();
+    });
+
+    socket.on('admin:stopTimer', async (_, cb) => {
+      if (denyIfNotAdmin(socket)) return;
+      const result = await stopLiveTimer();
+      if (!result.ok) {
+        if (cb) cb({ ok: false, error: result.error });
+        return;
+      }
+      broadcastState();
+      stopAuctionTimer();
+      if (cb) cb({ ok: true });
+    });
+
+    socket.on('admin:resumeTimer', async (_, cb) => {
+      if (denyIfNotAdmin(socket)) return;
+      const result = await resumeLiveTimer();
+      if (!result.ok) {
+        if (cb) cb({ ok: false, error: result.error });
+        return;
+      }
+      broadcastState();
+      ensureAuctionTimer();
+      if (cb) cb({ ok: true });
     });
 
     socket.on('admin:revertLastSold', async (_, cb) => {

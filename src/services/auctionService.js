@@ -220,6 +220,31 @@ async function markUnsold() {
   return auctionState.currentPlayer;
 }
 
+async function stopLiveTimer() {
+  const auctionState = getAuctionState();
+  if (auctionState.phase !== 'live' || !auctionState.timerEndsAt) {
+    return { ok: false, error: 'Timer is not running.' };
+  }
+
+  auctionState.timerEndsAt = null;
+  await persistAuctionState();
+  return { ok: true };
+}
+
+async function resumeLiveTimer() {
+  const auctionState = getAuctionState();
+  if (auctionState.phase !== 'live') {
+    return { ok: false, error: 'Auction is not live.' };
+  }
+  if (auctionState.timerEndsAt) {
+    return { ok: false, error: 'Timer is already running.' };
+  }
+
+  auctionState.timerEndsAt = Date.now() + (Number(auctionState.timerSeconds || 10) * 1000);
+  await persistAuctionState();
+  return { ok: true };
+}
+
 async function revertLastSold() {
   const auctionState = getAuctionState();
   if (auctionState.phase === 'live') {
@@ -314,6 +339,8 @@ module.exports = {
   undoBid,
   markSold,
   markUnsold,
+  stopLiveTimer,
+  resumeLiveTimer,
   revertLastSold,
   setIdle,
   resetAuctionAndTeams,
