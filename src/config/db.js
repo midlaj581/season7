@@ -2,6 +2,7 @@ const mysql = require('mysql2/promise');
 const { URL } = require('url');
 
 let pool;
+let memoryMode = false;
 
 function getEnv(name, fallback) {
   return process.env[name] || fallback;
@@ -9,6 +10,16 @@ function getEnv(name, fallback) {
 
 function toBool(value) {
   return String(value || '').toLowerCase() === 'true';
+}
+
+function hasAnyDbEnv() {
+  return !!(
+    process.env.DATABASE_URL
+    || process.env.MYSQL_URL
+    || process.env.MYSQL_URL_PUBLIC
+    || process.env.MYSQLHOST
+    || process.env.DB_HOST
+  );
 }
 
 function parseJSON(value, fallback) {
@@ -92,6 +103,16 @@ async function ensureColumn(table, column, ddl) {
 }
 
 async function connectDB() {
+  const allowMemoryFallback = !toBool(getEnv('REQUIRE_DB', 'false'));
+  if (!hasAnyDbEnv()) {
+    if (allowMemoryFallback) {
+      memoryMode = true;
+      console.warn('[DB] No database env vars found. Starting in memory mode.');
+      return;
+    }
+    throw new Error('Database configuration missing. Set DATABASE_URL (or MYSQL*/DB_* vars), or unset REQUIRE_DB.');
+  }
+
   const fullOptions = getDbOptions(true);
   const { database } = fullOptions;
 
@@ -108,6 +129,7 @@ async function connectDB() {
     }
   }
 
+  memoryMode = false;
   pool = mysql.createPool(fullOptions);
 
   await pool.query(`
@@ -167,6 +189,7 @@ async function connectDB() {
 }
 
 function getPool() {
+  if (memoryMode) return null;
   if (!pool) {
     throw new Error('Database is not connected. Call connectDB() before model access.');
   }
@@ -174,12 +197,14 @@ function getPool() {
 }
 
 async function loadConfig() {
+  if (memoryMode) return null;
   const [rows] = await getPool().query('SELECT config_json FROM config_store WHERE id = 1');
   if (!rows.length) return null;
   return parseJSON(rows[0].config_json, null);
 }
 
 async function saveConfig(config) {
+  if (memoryMode) return;
   await getPool().query(
     `INSERT INTO config_store (id, config_json)
      VALUES (1, ?)
@@ -189,6 +214,7 @@ async function saveConfig(config) {
 }
 
 async function loadPlayers() {
+  if (memoryMode) return [];
   const [rows] = await getPool().query(
     `SELECT id, name, position, rating, base_price, photo, status, sold_to, sold_price
      FROM players
@@ -209,6 +235,7 @@ async function loadPlayers() {
 }
 
 async function savePlayers(players) {
+  if (memoryMode) return;
   const connection = await getPool().getConnection();
   try {
     await connection.beginTransaction();
@@ -245,6 +272,7 @@ async function savePlayers(players) {
 }
 
 async function loadTeams() {
+  if (memoryMode) return [];
   const [rows] = await getPool().query(
     `SELECT id, name, color, logo, budget, spent, players_json
      FROM teams
@@ -263,6 +291,7 @@ async function loadTeams() {
 }
 
 async function saveTeams(teams) {
+  if (memoryMode) return;
   const connection = await getPool().getConnection();
   try {
     await connection.beginTransaction();
@@ -297,6 +326,7 @@ async function saveTeams(teams) {
 }
 
 async function loadAuctionState() {
+  if (memoryMode) return null;
   const [rows] = await getPool().query(
     `SELECT phase, current_player_json, current_bid, leading_team_json, bid_history_json, sold_players_json, timer_seconds, timer_ends_at, previous_bid_snapshot_json
      FROM auction_state
@@ -322,6 +352,7 @@ async function loadAuctionState() {
 }
 
 async function saveAuctionState({ auctionState, previousBidSnapshot }) {
+  if (memoryMode) return;
   await getPool().query(
     `INSERT INTO auction_state
      (id, phase, current_player_json, current_bid, leading_team_json, bid_history_json, sold_players_json, timer_seconds, timer_ends_at, previous_bid_snapshot_json)
@@ -352,6 +383,7 @@ async function saveAuctionState({ auctionState, previousBidSnapshot }) {
 
 module.exports = {
   connectDB,
+  hasAnyDbEnv,
   loadConfig,
   saveConfig,
   loadPlayers,
