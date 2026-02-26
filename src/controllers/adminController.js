@@ -1,4 +1,4 @@
-const { updateConfig, verifyAdminPassword } = require('../models/Config');
+const { updateConfig } = require('../models/Config');
 const {
   setIdle,
   resetAuctionAndTeams,
@@ -8,10 +8,6 @@ const {
   undoBid,
   getPublicState,
 } = require('../services/auctionService');
-
-function verifyPassword(req, res) {
-  return res.json({ ok: verifyAdminPassword(req.body.password) });
-}
 
 async function updateAuctionConfig(req, res) {
   await updateConfig(req.body || {});
@@ -53,7 +49,6 @@ async function undo(req, res) {
 }
 
 module.exports = {
-  verifyPassword,
   updateAuctionConfig,
   start,
   sold,
