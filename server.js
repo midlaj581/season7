@@ -22,11 +22,16 @@ const io = new Server(server, {
   cors: createCorsOptions(),
 });
 
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors(createCorsOptions()));
 app.use(apiLimiter);
 app.use(express.json({ limit: '15mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/health', (_req, res) => {
+  res.status(200).json({ ok: true, service: 'ppl-auction', ts: new Date().toISOString() });
+});
 
 app.use('/api', authRoutes);
 app.use('/api', playerRoutes);

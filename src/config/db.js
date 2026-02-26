@@ -1,9 +1,14 @@
 const mysql = require('mysql2/promise');
+const { URL } = require('url');
 
 let pool;
 
 function getEnv(name, fallback) {
   return process.env[name] || fallback;
+}
+
+function toBool(value) {
+  return String(value || '').toLowerCase() === 'true';
 }
 
 function parseJSON(value, fallback) {
@@ -21,9 +26,40 @@ function assertDbName(name) {
   }
 }
 
-function getDbOptions(includeDatabase = true) {
+function parseUrlOptions(rawUrl) {
+  const parsed = new URL(rawUrl);
+  const options = {
+    host: parsed.hostname,
+    port: Number(parsed.port || 3306),
+    user: decodeURIComponent(parsed.username || ''),
+    password: decodeURIComponent(parsed.password || ''),
+    database: decodeURIComponent((parsed.pathname || '/').replace(/^\//, '')),
+    waitForConnections: true,
+    connectionLimit: 10,
+  };
+
+  if (!options.database) {
+    options.database = getEnv('DB_NAME', 'auction_system');
+  }
+
+  if (toBool(getEnv('DB_SSL', 'false'))) {
+    options.ssl = { rejectUnauthorized: false };
+  }
+
+  return options;
+}
+
+function getDbOptions(includeDatabase = true, forceNoDatabase = false) {
+  const dbUrl = getEnv('DATABASE_URL', '') || getEnv('MYSQL_URL', '');
+  if (dbUrl) {
+    const urlOptions = parseUrlOptions(dbUrl);
+    if (forceNoDatabase) delete urlOptions.database;
+    if (!includeDatabase) delete urlOptions.database;
+    return urlOptions;
+  }
+
   const dbName = getEnv('DB_NAME', 'auction_system');
-  assertDbName(dbName);
+  if (includeDatabase) assertDbName(dbName);
 
   const options = {
     host: getEnv('DB_HOST', '127.0.0.1'),
@@ -38,17 +74,46 @@ function getDbOptions(includeDatabase = true) {
     options.database = dbName;
   }
 
+  if (toBool(getEnv('DB_SSL', 'false'))) {
+    options.ssl = { rejectUnauthorized: false };
+  }
+
   return options;
 }
 
+async function ensureColumn(table, column, ddl) {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS c
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?`,
+    [table, column],
+  );
+
+  if (!rows[0]?.c) {
+    await pool.query(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
+}
+
 async function connectDB() {
-  const { database } = getDbOptions(true);
+  const fullOptions = getDbOptions(true);
+  const { database } = fullOptions;
 
-  const bootstrap = mysql.createPool(getDbOptions(false));
-  await bootstrap.query(`CREATE DATABASE IF NOT EXISTS \`${database}\``);
-  await bootstrap.end();
+  // Some managed DB users cannot create databases; attempt and continue on access errors.
+  if (!getEnv('DATABASE_URL', '') && !getEnv('MYSQL_URL', '')) {
+    const bootstrap = mysql.createPool(getDbOptions(false, true));
+    try {
+      await bootstrap.query(`CREATE DATABASE IF NOT EXISTS \`${database}\``);
+    } catch (error) {
+      const denied = ['ER_DBACCESS_DENIED_ERROR', 'ER_ACCESS_DENIED_ERROR'].includes(error.code);
+      if (!denied) throw error;
+    } finally {
+      await bootstrap.end();
+    }
+  }
 
-  pool = mysql.createPool(getDbOptions(true));
+  pool = mysql.createPool(fullOptions);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS config_store (
@@ -102,11 +167,8 @@ async function connectDB() {
     )
   `);
 
-  await pool.query(`
-    ALTER TABLE auction_state
-    ADD COLUMN IF NOT EXISTS timer_seconds INT NOT NULL DEFAULT 10,
-    ADD COLUMN IF NOT EXISTS timer_ends_at BIGINT NULL
-  `);
+  await ensureColumn('auction_state', 'timer_seconds', 'timer_seconds INT NOT NULL DEFAULT 10');
+  await ensureColumn('auction_state', 'timer_ends_at', 'timer_ends_at BIGINT NULL');
 }
 
 function getPool() {
