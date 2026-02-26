@@ -78,6 +78,11 @@ async function resetAllTeams() {
   await persistTeams();
 }
 
+async function replaceTeams(nextTeams) {
+  teams = (Array.isArray(nextTeams) ? nextTeams : []).map(normalizeTeam);
+  await persistTeams();
+}
+
 module.exports = {
   initTeams,
   getTeams,
@@ -86,4 +91,5 @@ module.exports = {
   saveTeam,
   removeTeam,
   resetAllTeams,
+  replaceTeams,
 };

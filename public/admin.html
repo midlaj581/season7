@@ -290,6 +290,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
   </div>
   <div class="tb-r">
     <div class="timer-pill" id="topTimer">TIMER <span id="topTimerVal">10s</span></div>
+    <button class="btn btn-ghost btn-sm" onclick="exportBackup()">Export Backup</button>
+    <button class="btn btn-ghost btn-sm" onclick="openImportBackup()">Import Backup</button>
+    <input type="file" id="backupFileInput" accept=".json,application/json" style="display:none" onchange="importBackupFile(event)"/>
     <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙ Settings</button>
     <button class="btn btn-danger btn-sm" onclick="confirmReset()">🗑 Reset All</button>
   </div>
@@ -680,6 +683,12 @@ socket.on('bidError', ({msg}) => {
   const el=document.getElementById('bidErr');
   el.textContent=msg; setTimeout(()=>el.textContent='',4500);
 });
+socket.on('backupImported', () => {
+  const el=document.getElementById('bidErr');
+  el.style.color='var(--green)';
+  el.textContent='Backup imported successfully.';
+  setTimeout(()=>{el.textContent='';el.style.color='';},3000);
+});
 
 // ── RENDER ───────────────────────────────────────────────────────────────────
 function render() {
@@ -948,6 +957,43 @@ function setPF(p){posFilter=p;renderPlayers();}
 function confirmReset(){
   if(confirm('⚠️ RESET ALL?\n\nClears all squads, budgets restored, players back to pool.'))
     socket.emit('admin:resetAllTeams');
+}
+
+function exportBackup() {
+  socket.emit('admin:exportBackup', {}, (resp) => {
+    if (!resp?.ok) {
+      alert(resp?.error || 'Backup export failed.');
+      return;
+    }
+    const json = JSON.stringify(resp.snapshot, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = resp.filename || `auction-backup-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+}
+
+function openImportBackup() {
+  document.getElementById('backupFileInput').click();
+}
+
+async function importBackupFile(event) {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  const payload = await file.text();
+  socket.emit('admin:importBackup', { payload }, (resp) => {
+    if (!resp?.ok) {
+      alert(resp?.error || 'Backup import failed.');
+      return;
+    }
+    alert('Backup imported successfully.');
+  });
 }
 
 // ── SAVE PLAYER ────────────────────────────────────────────────────────────

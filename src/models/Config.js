@@ -51,9 +51,18 @@ async function updateConfig(nextConfig) {
   return config;
 }
 
+async function replaceConfigFromBackup(nextConfig) {
+  if (!nextConfig || typeof nextConfig !== 'object') return config;
+  const { adminPassword, ...safeConfig } = nextConfig;
+  config = { ...config, ...safeConfig };
+  await saveConfig(config);
+  return config;
+}
+
 module.exports = {
   initConfig,
   getConfig,
   updateConfig,
   verifyAdminPassword,
+  replaceConfigFromBackup,
 };

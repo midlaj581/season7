@@ -14,6 +14,7 @@ const authRoutes = require('./src/routes/authRoutes');
 const { registerSocketHandlers } = require('./src/socket/socketHandler');
 const { getConfig } = require('./src/models/Config');
 const { helmet, cors, apiLimiter, createCorsOptions } = require('./src/config/security');
+const { startAutoBackupJob } = require('./src/services/backupService');
 
 const app = express();
 const server = http.createServer(app);
@@ -39,12 +40,16 @@ const PORT = process.env.PORT || 3000;
 connectDB()
   .then(() => initializeModels())
   .then(() => {
+    const backupIntervalMs = Number(process.env.AUTO_BACKUP_INTERVAL_MS || 30_000);
+    startAutoBackupJob(backupIntervalMs);
+
     server.listen(PORT, () => {
       console.log(`\nPPL Auction -> http://localhost:${PORT}`);
       console.log(`Admin       -> http://localhost:${PORT}/admin.html`);
       console.log(`Projector   -> http://localhost:${PORT}/projector.html`);
       console.log(`Manager     -> http://localhost:${PORT}/manager.html`);
       console.log('\nAdmin password is securely stored (hashed).\n');
+      console.log(`Auto backup every ${Math.floor(backupIntervalMs / 1000)}s.`);
       const cfg = getConfig();
       if (!cfg.adminPassword) {
         console.warn('Admin password is not configured.');

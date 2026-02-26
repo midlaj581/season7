@@ -41,6 +41,12 @@ async function persistAuctionState() {
   await saveAuctionState({ auctionState, previousBidSnapshot });
 }
 
+async function replaceAuction(nextAuctionState, nextPreviousBidSnapshot = null) {
+  auctionState = { ...defaultAuctionState, ...(nextAuctionState || {}) };
+  previousBidSnapshot = nextPreviousBidSnapshot;
+  await persistAuctionState();
+}
+
 module.exports = {
   initAuction,
   getAuctionState,
@@ -49,4 +55,5 @@ module.exports = {
   getPreviousBidSnapshot,
   setPreviousBidSnapshot,
   persistAuctionState,
+  replaceAuction,
 };

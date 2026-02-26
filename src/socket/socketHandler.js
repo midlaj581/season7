@@ -2,6 +2,7 @@ const { verifyAdminPassword, updateConfig } = require('../models/Config');
 const { addPlayer, editPlayer, removePlayer, resetPlayer } = require('../models/Player');
 const { saveTeam, removeTeam } = require('../models/Team');
 const { verifyAdminToken } = require('../services/authService');
+const { exportBackupToFile, importBackup } = require('../services/backupService');
 const {
   getPublicState,
   startAuction,
@@ -231,6 +232,29 @@ function registerSocketHandlers(io) {
       await updateConfig(cfg || {});
       broadcastState();
       ensureAuctionTimer();
+    });
+
+    socket.on('admin:exportBackup', async (_, cb) => {
+      if (denyIfNotAdmin(socket)) return;
+      try {
+        const { filename, snapshot } = await exportBackupToFile();
+        if (cb) cb({ ok: true, filename, snapshot });
+      } catch (error) {
+        if (cb) cb({ ok: false, error: error.message });
+      }
+    });
+
+    socket.on('admin:importBackup', async ({ payload }, cb) => {
+      if (denyIfNotAdmin(socket)) return;
+      try {
+        await importBackup(payload);
+        broadcastState();
+        ensureAuctionTimer();
+        io.emit('backupImported');
+        if (cb) cb({ ok: true });
+      } catch (error) {
+        if (cb) cb({ ok: false, error: error.message });
+      }
     });
 
     socket.on('disconnect', () => {

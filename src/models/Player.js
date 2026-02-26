@@ -101,6 +101,11 @@ async function resetAllSoldOrUnsoldPlayers() {
   await persistPlayers();
 }
 
+async function replacePlayers(nextPlayers) {
+  players = (Array.isArray(nextPlayers) ? nextPlayers : []).map(normalizePlayer);
+  await persistPlayers();
+}
+
 module.exports = {
   initPlayers,
   getPlayers,
@@ -111,4 +116,5 @@ module.exports = {
   removePlayer,
   resetPlayer,
   resetAllSoldOrUnsoldPlayers,
+  replacePlayers,
 };
