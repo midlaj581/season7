@@ -17,6 +17,12 @@
 }
 html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px;min-height:100vh}
+body.light{
+  --bg:#f4f7fb;--bg2:#ffffff;--bg3:#eef3fb;--bg4:#e6edf8;--card:#ffffff;--border:#c9d7ef;
+  --green:#0a8f57;--gd:rgba(10,143,87,0.08);--gb:rgba(10,143,87,0.2);--glow:rgba(10,143,87,0.25);
+  --red:#d64141;--yellow:#b18600;--text:#0e1c35;--td:#4a5f86;--tm:#7f92b6;
+}
+.topbar,.tab,.std-row,.live-card,.bs,.pr{transition:all .2s ease}
 
 /* ── LOGIN ─────────────────────────────────────────────────────────────── */
 #loginScreen{
@@ -66,6 +72,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
 .tb-blbl{font-family:var(--ffm);font-size:0.52rem;color:var(--td);letter-spacing:0.06em;text-transform:uppercase}
 .tb-timer{font-family:var(--ffm);font-size:0.72rem;letter-spacing:0.08em;color:var(--green)}
 .tb-timer.crit{color:var(--red);animation:gp 0.8s infinite}
+.theme-btn{margin-top:0.2rem;background:transparent;border:1px solid var(--border);color:var(--td);padding:0.1rem 0.45rem;border-radius:4px;font-family:var(--ffm);font-size:0.56rem;cursor:pointer}
+.theme-btn:hover{border-color:var(--gb);color:var(--green)}
 
 /* Tabs */
 .tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border)}
@@ -194,6 +202,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
       <div class="tb-budget" id="tbBudget">₹0</div>
       <div class="tb-timer" id="tbTimer">--</div>
       <div class="tb-blbl">Remaining</div>
+      <button class="theme-btn" onclick="toggleTheme()">Theme</button>
     </div>
   </div>
 
@@ -286,6 +295,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
 const socket = io();
 let S = { auctionState:{phase:'idle',currentBid:0,leadingTeam:null,bidHistory:[],timerRemaining:0}, teams:[], players:[], config:{} };
 let myTeamId = null, selId = null, curTab = 'live';
+const THEME_KEY = 'ppl_manager_theme';
+applySavedTheme();
 
 socket.on('stateUpdate', data => {
   S = data;
@@ -515,6 +526,8 @@ function showTab(id) {
 }
 
 function timeAgo(ts){const s=Math.floor((Date.now()-ts)/1000);if(s<60)return`${s}s`;if(s<3600)return`${Math.floor(s/60)}m`;return`${Math.floor(s/3600)}h`;}
+function applySavedTheme(){document.body.classList.toggle('light',(localStorage.getItem(THEME_KEY)||'dark')==='light');}
+function toggleTheme(){const isLight=document.body.classList.toggle('light');localStorage.setItem(THEME_KEY,isLight?'light':'dark');}
 
 function playBeep(freq = 700, duration = 100) {
   const Ctx = window.AudioContext || window.webkitAudioContext;

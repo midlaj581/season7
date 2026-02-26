@@ -15,8 +15,14 @@
   --ff:'Barlow Condensed',sans-serif;--ffi:Inter,sans-serif;--ffm:'DM Mono',monospace;
   --r:6px;
 }
+body.light{
+  --bg:#f4f7fb;--bg2:#ffffff;--bg3:#eef3fb;--bg4:#e6edf8;--card:#ffffff;--border:#c9d7ef;
+  --green:#0a8f57;--gd:rgba(10,143,87,0.08);--gb:rgba(10,143,87,0.26);--glow:rgba(10,143,87,0.25);
+  --red:#d64141;--rd:rgba(214,65,65,0.1);--yellow:#b18600;--blue:#1868cc;
+  --text:#0e1c35;--td:#4a5f86;--tm:#7f92b6;
+}
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px;min-height:100vh;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px;min-height:100vh;overflow-x:hidden;transition:background .25s,color .25s}
 
 /* ── LOGIN ─────────────────────────────────────────────────────────────── */
 #loginScreen{
@@ -66,11 +72,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
 .links a{color:var(--green);text-decoration:none;padding:0.18rem 0.65rem;border:1px solid var(--gb);border-radius:4px;font-family:var(--ffm);font-size:0.62rem;letter-spacing:0.06em;transition:all 0.15s}
 .links a:hover{background:var(--gd)}
 .links span{color:var(--tm);font-family:var(--ffm);font-size:0.62rem;align-self:center}
+.kbd-hint{margin-left:auto;color:var(--td);font-family:var(--ffm);font-size:0.58rem;letter-spacing:0.06em}
 
 /* ── LAYOUT ─────────────────────────────────────────────────────────────── */
 .layout{display:grid;grid-template-columns:1fr 340px;gap:1.1rem;padding:1.1rem;max-width:1500px;margin:0 auto}
 .col{display:flex;flex-direction:column;gap:1.1rem}
 .panel{background:var(--card);border:1px solid var(--border);border-radius:var(--r)}
+.panel,.stage,.trb,.btn,.tc{transition:all .2s ease}
 .ph{padding:0.7rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:0.5rem;flex-wrap:wrap}
 .pt{font-family:var(--ffm);font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--td)}
 .pb{padding:1rem}
@@ -300,6 +308,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
   </div>
   <div class="tb-r">
     <div class="timer-pill" id="topTimer">TIMER <span id="topTimerVal">10s</span></div>
+    <button class="btn btn-ghost btn-sm" onclick="toggleTheme()">Theme</button>
     <button class="btn btn-ghost btn-sm" onclick="exportBackup()">Export Backup</button>
     <button class="btn btn-ghost btn-sm" onclick="openImportBackup()">Import Backup</button>
     <input type="file" id="backupFileInput" accept=".json,application/json" style="display:none" onchange="importBackupFile(event)"/>
@@ -311,6 +320,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
   <span>Open on screens →</span>
   <a href="/projector.html" target="_blank">🖥 Projector</a>
   <a href="/manager.html" target="_blank">👤 Manager</a>
+  <span class="kbd-hint">Shortcuts: `S` sold, `U` unsold, `Z` undo, `I` idle, `/` search</span>
 </div>
 
 <div class="layout">
@@ -589,6 +599,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
 const socket = io();
 let S = { auctionState:{phase:'idle',currentBid:0,bidHistory:[],soldPlayers:[]}, teams:[], players:[], config:{} };
 let posFilter = 'ALL';
+
+const THEME_KEY = 'ppl_admin_theme';
+applySavedTheme();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STEP 5: CLOUDINARY UPLOAD FUNCTION
@@ -954,6 +967,10 @@ function renderAnalytics(an) {
       <div class="a-kpi"><div class="a-kpi-l">Avg Cost / Player</div><div class="a-kpi-v">₹${topAvg?Math.round(topAvg.avgCost).toLocaleString():0}</div></div>
     </div>
     <div style="margin-top:0.6rem">
+      <div class="pt" style="margin-bottom:0.25rem">Animated Leaderboard</div>
+      ${(an.budgetEfficiency||[]).slice(0,5).map((row,i)=>`<div class="a-row" style="${i===0?'border-left:3px solid var(--green);padding-left:0.35rem;background:var(--gd);':''}"><span class="a-lbl">#${i+1} ${row.team}</span><span class="a-val">₹${row.remaining.toLocaleString()} left</span></div>`).join('')}
+    </div>
+    <div style="margin-top:0.6rem">
       <div class="pt" style="margin-bottom:0.25rem">Category Spend</div>
       ${catTop.map(c=>`<div class="a-row"><span class="a-lbl">${c.category}</span><span class="a-val">₹${c.total.toLocaleString()} (${c.sharePct}%)</span></div>`).join('') || '<div class="a-row"><span class="a-lbl">-</span><span class="a-val">No sales</span></div>'}
     </div>
@@ -1125,11 +1142,32 @@ function saveSettings(){
   closeModal('settingsModal');
 }
 
+function applySavedTheme() {
+  const theme = localStorage.getItem(THEME_KEY) || 'dark';
+  document.body.classList.toggle('light', theme === 'light');
+}
+
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light');
+  localStorage.setItem(THEME_KEY, isLight ? 'light' : 'dark');
+}
+
 // ── MODALS ────────────────────────────────────────────────────────────────────
 function openModal(id){document.getElementById(id).classList.add('open');document.body.style.overflow='hidden';}
 function closeModal(id){document.getElementById(id).classList.remove('open');document.body.style.overflow='';}
 document.querySelectorAll('.mbg').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)closeModal(el.id);}));
 document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.mbg.open').forEach(el=>closeModal(el.id));});
+document.addEventListener('keydown',e=>{
+  const t=e.target;
+  const inField=t&&((t.tagName==='INPUT')||(t.tagName==='TEXTAREA')||(t.tagName==='SELECT')||t.isContentEditable);
+  if(e.key==='/'&&!inField){e.preventDefault();document.getElementById('pSrch')?.focus();return;}
+  if(inField) return;
+  if(e.key==='s'||e.key==='S') doSold();
+  if(e.key==='u'||e.key==='U') doUnsold();
+  if(e.key==='z'||e.key==='Z') doUndo();
+  if(e.key==='i'||e.key==='I') doIdle();
+  if(e.key==='t'||e.key==='T') toggleTheme();
+});
 render();
 </script>
 </body>
