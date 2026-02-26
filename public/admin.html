@@ -453,7 +453,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
 <!-- RIGHT COL -->
 <div class="col">
   <div class="panel">
-    <div class="ph"><span class="pt">Teams</span><button class="btn btn-green btn-sm" onclick="openTeamModal(null)">+ Add Team</button></div>
+    <div class="ph"><span class="pt">Teams</span><div style="display:flex;gap:0.35rem"><button class="btn btn-ghost btn-sm" onclick="downloadAllTeamsCsv()">Download Lists</button><button class="btn btn-green btn-sm" onclick="openTeamModal(null)">+ Add Team</button></div></div>
     <div class="pb" id="teamsPanel"></div>
   </div>
   <div class="panel">
@@ -1108,6 +1108,42 @@ async function importBackupFile(event) {
     }
     alert('Backup imported successfully.');
   });
+}
+
+function downloadAllTeamsCsv() {
+  const rows = [['Team', 'Budget', 'Spent', 'Remaining', 'Player', 'Position', 'Rating', 'Sold Price']];
+  (S.teams || []).forEach((team) => {
+    const rem = (team.budget || 0) - (team.spent || 0);
+    if (!team.players?.length) {
+      rows.push([team.name, team.budget || 0, team.spent || 0, rem, '', '', '', '']);
+      return;
+    }
+    team.players.forEach((player) => {
+      rows.push([
+        team.name,
+        team.budget || 0,
+        team.spent || 0,
+        rem,
+        player.name || '',
+        player.position || '',
+        player.rating || '',
+        player.soldPrice || 0,
+      ]);
+    });
+  });
+
+  const csv = rows
+    .map((row) => row.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `all_team_lists_${Date.now()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ── SAVE PLAYER ────────────────────────────────────────────────────────────

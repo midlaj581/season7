@@ -157,6 +157,20 @@ body.light{
 .pr-sub{font-family:var(--ffm);font-size:0.56rem;color:var(--td)}
 .pr-price{font-family:var(--ffm);font-size:0.7rem;color:var(--green)}
 .sq-empty{font-style:italic;color:var(--tm);font-size:0.9rem;padding:0.7rem 0}
+.sq-tools{display:flex;gap:0.45rem}
+.sq-btn{background:transparent;border:1px solid var(--border);color:var(--td);padding:0.16rem 0.45rem;border-radius:4px;font-family:var(--ffm);font-size:0.56rem;cursor:pointer}
+.sq-btn:hover{border-color:var(--gb);color:var(--green)}
+
+.lineup-wrap{margin-top:1rem;background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:0.7rem}
+.lineup-title{font-family:var(--ffm);font-size:0.58rem;letter-spacing:0.14em;color:var(--td);text-transform:uppercase;margin-bottom:0.55rem}
+.lineup-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0.45rem}
+.lineup-slot{background:var(--bg3);border:1px dashed var(--border);border-radius:4px;min-height:58px;padding:0.35rem;display:flex;flex-direction:column;justify-content:center;gap:0.2rem}
+.lineup-slot.filled{border-style:solid;border-color:var(--gb);background:var(--gd)}
+.lineup-pos{font-family:var(--ffm);font-size:0.52rem;color:var(--td)}
+.lineup-player{font-size:0.8rem;font-weight:700;line-height:1.1}
+.lineup-sub{font-family:var(--ffm);font-size:0.54rem;color:var(--tm)}
+.lineup-remove{align-self:flex-start;background:transparent;border:1px solid var(--border);color:var(--td);border-radius:3px;font-size:0.55rem;padding:0.02rem 0.25rem;cursor:pointer}
+.lineup-remove:hover{border-color:var(--red);color:var(--red)}
 
 /* ── STANDINGS TAB ──────────────────────────────────────────────────────── */
 .std-row{display:flex;align-items:center;gap:0.65rem;padding:0.7rem 0.9rem;background:var(--card);border:1px solid var(--border);border-radius:var(--r);margin-bottom:0.48rem;transition:border-color 0.2s}
@@ -272,9 +286,17 @@ body.light{
       <div class="minn" id="minNote"></div>
       <div class="sh">
         <div class="st">My Squad</div>
-        <div class="sb" id="sqCount" style="color:var(--green)"></div>
+        <div class="sq-tools">
+          <button class="sq-btn" onclick="downloadMyTeamCsv()">Download Team</button>
+          <button class="sq-btn" onclick="clearLineup()">Clear Lineup</button>
+          <div class="sb" id="sqCount" style="color:var(--green)"></div>
+        </div>
       </div>
       <div id="sqList"></div>
+      <div class="lineup-wrap">
+        <div class="lineup-title">7s Lineup Board (drag players into positions)</div>
+        <div class="lineup-grid" id="lineupGrid"></div>
+      </div>
     </div>
   </div>
 
@@ -296,6 +318,8 @@ const socket = io();
 let S = { auctionState:{phase:'idle',currentBid:0,leadingTeam:null,bidHistory:[],timerRemaining:0}, teams:[], players:[], config:{} };
 let myTeamId = null, selId = null, curTab = 'live';
 const THEME_KEY = 'ppl_manager_theme';
+const LINEUP_POSITIONS = ['GK','LB','CB','RB','CM','LW','ST'];
+let draggingPlayerId = null;
 applySavedTheme();
 
 socket.on('stateUpdate', data => {
@@ -523,6 +547,145 @@ function showTab(id) {
     if(id==='squad')     renderSquad(team);
     if(id==='standings') renderStandings(team);
   }
+}
+
+function renderSquad(team) {
+  const rem = team.budget - team.spent;
+  const pct = Math.max(0, (rem / team.budget) * 100);
+  const need = Math.max(0, (S.config.minPlayersPerTeam || 10) - team.players.length);
+  document.getElementById('bsT').textContent = `₹${team.budget.toLocaleString()}`;
+  document.getElementById('bsS').textContent = `₹${team.spent.toLocaleString()}`;
+  document.getElementById('bsR').textContent = `₹${rem.toLocaleString()}`;
+  document.getElementById('bbar').style.width = `${pct}%`;
+  document.getElementById('bbar').style.background = team.color;
+  document.getElementById('sqCount').textContent = `${team.players.length} / ${S.config.minPlayersPerTeam || 10}`;
+
+  const mn = document.getElementById('minNote');
+  if (need > 0) {
+    const avg = Math.floor(rem / need);
+    mn.innerHTML = `Still need <span>${need}</span> more player${need !== 1 ? 's' : ''} · Can average <span>₹${avg.toLocaleString()}</span> each`;
+  } else {
+    mn.innerHTML = `<span class="ok">✅ Squad complete — ${team.players.length} players signed</span>`;
+  }
+
+  const posOrd = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LW', 'RW', 'ST'];
+  const div = document.getElementById('sqList');
+  if (!team.players.length) {
+    div.innerHTML = '<div class="sq-empty">No players yet</div>';
+    renderLineup(team);
+    return;
+  }
+
+  const grouped = {};
+  team.players.forEach((player) => {
+    if (!grouped[player.position]) grouped[player.position] = [];
+    grouped[player.position].push(player);
+  });
+  const sorted = Object.entries(grouped).sort(([a], [b]) => (posOrd.indexOf(a) < 0 ? 99 : posOrd.indexOf(a)) - (posOrd.indexOf(b) < 0 ? 99 : posOrd.indexOf(b)));
+  div.innerHTML = sorted.map(([pos, players]) => `
+    <div class="pg">
+      <div class="pg-lbl">${pos} · ${players.length}</div>
+      ${players.map((player) => `<div class="pr" draggable="true" ondragstart="startLineupDrag(${player.id})">
+        <div class="pr-ph"><img src="${player.photo}" alt=""/></div>
+        <div class="pr-info">
+          <div class="pr-name">${player.name}</div>
+          <div class="pr-sub">${player.position} · ${player.rating} OVR</div>
+        </div>
+        <div class="pr-price">₹${(player.soldPrice || 0).toLocaleString()}</div>
+      </div>`).join('')}
+    </div>`).join('');
+  renderLineup(team);
+}
+
+function getLineupKey() { return `ppl_lineup_${myTeamId}`; }
+function loadLineup() { try { const raw = localStorage.getItem(getLineupKey()); return raw ? JSON.parse(raw) : {}; } catch (_) { return {}; } }
+function saveLineup(lineup) { localStorage.setItem(getLineupKey(), JSON.stringify(lineup || {})); }
+function startLineupDrag(playerId) { draggingPlayerId = Number(playerId); }
+function allowLineupDrop(event) { event.preventDefault(); }
+
+function dropOnLineup(slot) {
+  if (!draggingPlayerId) return;
+  const team = S.teams.find((item) => item.id === myTeamId);
+  if (!team) return;
+  const player = team.players.find((item) => Number(item.id) === Number(draggingPlayerId));
+  if (!player) return;
+
+  const lineup = loadLineup();
+  Object.keys(lineup).forEach((key) => { if (Number(lineup[key]) === Number(player.id)) delete lineup[key]; });
+  lineup[slot] = Number(player.id);
+  saveLineup(lineup);
+  draggingPlayerId = null;
+  renderLineup(team);
+}
+
+function removeFromLineup(slot) {
+  const team = S.teams.find((item) => item.id === myTeamId);
+  if (!team) return;
+  const lineup = loadLineup();
+  delete lineup[slot];
+  saveLineup(lineup);
+  renderLineup(team);
+}
+
+function clearLineup() {
+  if (!myTeamId) return;
+  localStorage.removeItem(getLineupKey());
+  const team = S.teams.find((item) => item.id === myTeamId);
+  if (team) renderLineup(team);
+}
+
+function renderLineup(team) {
+  const lineup = loadLineup();
+  const playerById = new Map(team.players.map((player) => [Number(player.id), player]));
+  let dirty = false;
+  Object.keys(lineup).forEach((slot) => {
+    if (!playerById.has(Number(lineup[slot]))) {
+      delete lineup[slot];
+      dirty = true;
+    }
+  });
+  if (dirty) saveLineup(lineup);
+
+  const grid = document.getElementById('lineupGrid');
+  grid.innerHTML = LINEUP_POSITIONS.map((pos) => {
+    const playerId = Number(lineup[pos] || 0);
+    const player = playerById.get(playerId);
+    if (!player) {
+      return `<div class="lineup-slot" ondragover="allowLineupDrop(event)" ondrop="dropOnLineup('${pos}')">
+        <div class="lineup-pos">${pos}</div>
+        <div class="lineup-sub">Drop player here</div>
+      </div>`;
+    }
+    return `<div class="lineup-slot filled" ondragover="allowLineupDrop(event)" ondrop="dropOnLineup('${pos}')">
+      <div class="lineup-pos">${pos}</div>
+      <div class="lineup-player">${player.name}</div>
+      <div class="lineup-sub">${player.position} · ${player.rating} OVR</div>
+      <button class="lineup-remove" onclick="removeFromLineup('${pos}')">Remove</button>
+    </div>`;
+  }).join('');
+}
+
+function downloadMyTeamCsv() {
+  const team = S.teams.find((item) => item.id === myTeamId);
+  if (!team) return;
+  const lineup = loadLineup();
+  const slotByPlayer = {};
+  Object.keys(lineup).forEach((slot) => { slotByPlayer[Number(lineup[slot])] = slot; });
+
+  const rows = [
+    ['Team', 'Player', 'Position', 'Rating', 'Sold Price', 'Lineup Slot'],
+    ...team.players.map((player) => [team.name, player.name, player.position, player.rating, player.soldPrice || 0, slotByPlayer[Number(player.id)] || '']),
+  ];
+  const csv = rows.map((row) => row.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${team.name.replace(/\s+/g, '_')}_squad.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function timeAgo(ts){const s=Math.floor((Date.now()-ts)/1000);if(s<60)return`${s}s`;if(s<3600)return`${Math.floor(s/60)}m`;return`${Math.floor(s/3600)}h`;}
