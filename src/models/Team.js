@@ -1,7 +1,21 @@
 const { loadTeams, saveTeams } = require('../config/db');
 const { defaultTeams } = require('../config/defaultData');
+const { getConfig } = require('./Config');
 
 let teams = [];
+const HARD_BUDGET_LIMIT = 1500;
+
+function resolveBudgetLimit() {
+  const fromConfig = Number(getConfig()?.teamBudgetLimit || HARD_BUDGET_LIMIT);
+  return Number.isFinite(fromConfig) ? Math.max(1, fromConfig) : HARD_BUDGET_LIMIT;
+}
+
+function clampBudget(value) {
+  const limit = resolveBudgetLimit();
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return limit;
+  return Math.max(1, Math.min(limit, Math.round(numeric)));
+}
 
 function normalizeTeam(team) {
   return {
@@ -9,7 +23,7 @@ function normalizeTeam(team) {
     name: team.name,
     color: team.color,
     logo: team.logo || '',
-    budget: Number(team.budget),
+    budget: clampBudget(team.budget),
     spent: Number(team.spent || 0),
     players: Array.isArray(team.players) ? team.players : [],
   };
@@ -19,6 +33,7 @@ async function initTeams() {
   const fromDb = await loadTeams();
   if (fromDb.length) {
     teams = fromDb.map(normalizeTeam);
+    await saveTeams(teams);
     return;
   }
 

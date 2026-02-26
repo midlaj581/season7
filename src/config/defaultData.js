@@ -7,6 +7,7 @@ const defaultConfig = {
   highIncrement: 20,
   lowIncrement: 10,
   auctionTimerSeconds: 10,
+  teamBudgetLimit: 1500,
   adminPassword: 'ppl2024',
 };
 
@@ -54,10 +55,10 @@ const defaultPlayers = [
 ];
 
 const defaultTeams = [
-  { id: 'T1', name: 'Thunder FC', color: '#e63946', logo: '', budget: 8000, spent: 0, players: [] },
-  { id: 'T2', name: 'Strikers SC', color: '#4895ef', logo: '', budget: 8000, spent: 0, players: [] },
-  { id: 'T3', name: 'Royal Eagles', color: '#f4a261', logo: '', budget: 8000, spent: 0, players: [] },
-  { id: 'T4', name: 'Green Wolves', color: '#2dc653', logo: '', budget: 8000, spent: 0, players: [] },
+  { id: 'T1', name: 'Thunder FC', color: '#e63946', logo: '', budget: 1500, spent: 0, players: [] },
+  { id: 'T2', name: 'Strikers SC', color: '#4895ef', logo: '', budget: 1500, spent: 0, players: [] },
+  { id: 'T3', name: 'Royal Eagles', color: '#f4a261', logo: '', budget: 1500, spent: 0, players: [] },
+  { id: 'T4', name: 'Green Wolves', color: '#2dc653', logo: '', budget: 1500, spent: 0, players: [] },
 ];
 
 const defaultAuctionState = {

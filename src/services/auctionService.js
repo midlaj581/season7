@@ -20,6 +20,7 @@ const {
   persistAuctionState,
 } = require('../models/Auction');
 const { sanitizeConfig } = require('../utils/helpers');
+const { computeAnalytics } = require('./analyticsService');
 
 function getIncrement(currentBid) {
   const config = getConfig();
@@ -65,6 +66,7 @@ function getPublicState() {
     teams: getTeams(),
     players: getPlayers(),
     config: sanitizeConfig(getConfig()),
+    analytics: computeAnalytics({ teams: getTeams(), players: getPlayers(), config: getConfig() }),
   };
 }
 

@@ -248,6 +248,16 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
 .si-name{font-size:0.9rem;font-weight:700;flex:1;font-family:var(--ff)}
 .si-pos{font-family:var(--ffm);font-size:0.56rem;color:var(--td)}
 .si-price{font-family:var(--ffm);font-size:0.72rem;color:var(--green)}
+
+/* Analytics */
+.a-kpis{display:grid;grid-template-columns:1fr 1fr;gap:0.45rem}
+.a-kpi{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:0.45rem 0.55rem}
+.a-kpi-l{font-family:var(--ffm);font-size:0.52rem;color:var(--td);letter-spacing:0.08em;text-transform:uppercase}
+.a-kpi-v{font-size:1.1rem;font-weight:800;color:var(--green);margin-top:0.1rem}
+.a-row{display:flex;align-items:center;justify-content:space-between;gap:0.5rem;font-family:var(--ffm);font-size:0.62rem;padding:0.26rem 0;border-bottom:1px solid rgba(37,37,69,0.45)}
+.a-row:last-child{border-bottom:none}
+.a-lbl{color:var(--td)}
+.a-val{color:var(--text)}
 .si-team{font-size:0.78rem;font-weight:700}
 .si-tl{width:15px;height:15px;object-fit:contain;border-radius:2px;flex-shrink:0}
 
@@ -440,6 +450,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
     <div class="ph"><span class="pt">Sold Players</span><span id="soldMeta" style="font-family:var(--ffm);font-size:0.6rem;color:var(--tm)"></span></div>
     <div class="pb" id="soldPanel"><div style="color:var(--tm);font-style:italic;font-size:0.85rem">No sales yet</div></div>
   </div>
+  <div class="panel">
+    <div class="ph"><span class="pt">Analytics</span><span id="anMeta" style="font-family:var(--ffm);font-size:0.58rem;color:var(--tm)"></span></div>
+    <div class="pb" id="analyticsPanel">
+      <div style="color:var(--tm);font-style:italic;font-size:0.85rem">No analytics yet</div>
+    </div>
+  </div>
 </div>
 </div>
 </div><!-- /adminApp -->
@@ -454,7 +470,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
       <div><label class="fl">Team Name *</label><input class="fi" id="tmName" placeholder="e.g. Thunder FC"/></div>
       <div style="display:flex;gap:0.65rem">
         <div style="flex:0 0 85px"><label class="fl">Color</label><input class="fi" id="tmColor" type="color" value="#e63946" style="height:40px;padding:2px 4px;cursor:pointer"/></div>
-        <div style="flex:1"><label class="fl">Budget (₹) *</label><input class="fi" id="tmBudget" type="number" placeholder="8000"/></div>
+        <div style="flex:1"><label class="fl">Budget (₹) * (Max 1500)</label><input class="fi" id="tmBudget" type="number" min="1" max="1500" placeholder="1500"/></div>
       </div>
 
       <!-- PHOTO FIELD 2: Team Logo — Step 4 applied here -->
@@ -702,6 +718,7 @@ function render() {
   renderPlayers();
   renderBidLog(as.bidHistory);
   renderSold(as.soldPlayers);
+  renderAnalytics(S.analytics);
   renderPosFilters(players);
   renderTimer(as.phase, as.timerRemaining ?? 0);
 }
@@ -914,6 +931,40 @@ function renderSold(sold) {
     </div>`).join('');
 }
 
+function renderAnalytics(an) {
+  const div = document.getElementById('analyticsPanel');
+  if (!an) {
+    document.getElementById('anMeta').textContent = '';
+    div.innerHTML = '<div style="color:var(--tm);font-style:italic;font-size:0.85rem">No analytics yet</div>';
+    return;
+  }
+
+  const hs = an.highestSpenderTeam;
+  const topEff = an.budgetEfficiency?.[0];
+  const topAvg = an.teamAverageCost?.[0];
+  const price = an.priceDistribution || {};
+  const catTop = (an.categorySpending || []).slice(0, 4);
+
+  document.getElementById('anMeta').textContent = `Budget cap ₹${(an.teamBudgetLimit||1500).toLocaleString()}`;
+  div.innerHTML = `
+    <div class="a-kpis">
+      <div class="a-kpi"><div class="a-kpi-l">Highest Spender</div><div class="a-kpi-v">${hs?hs.name:'-'}</div></div>
+      <div class="a-kpi"><div class="a-kpi-l">Spent</div><div class="a-kpi-v">₹${hs?hs.spent.toLocaleString():0}</div></div>
+      <div class="a-kpi"><div class="a-kpi-l">Budget Efficiency</div><div class="a-kpi-v">${topEff?topEff.spendRatePct.toFixed(1):0}%</div></div>
+      <div class="a-kpi"><div class="a-kpi-l">Avg Cost / Player</div><div class="a-kpi-v">₹${topAvg?Math.round(topAvg.avgCost).toLocaleString():0}</div></div>
+    </div>
+    <div style="margin-top:0.6rem">
+      <div class="pt" style="margin-bottom:0.25rem">Category Spend</div>
+      ${catTop.map(c=>`<div class="a-row"><span class="a-lbl">${c.category}</span><span class="a-val">₹${c.total.toLocaleString()} (${c.sharePct}%)</span></div>`).join('') || '<div class="a-row"><span class="a-lbl">-</span><span class="a-val">No sales</span></div>'}
+    </div>
+    <div style="margin-top:0.6rem">
+      <div class="pt" style="margin-bottom:0.25rem">Price Distribution</div>
+      ${(price.buckets||[]).map(b=>`<div class="a-row"><span class="a-lbl">${b.label}</span><span class="a-val">${b.count}</span></div>`).join('') || ''}
+      <div class="a-row"><span class="a-lbl">Min / Avg / Max</span><span class="a-val">₹${(price.min||0).toLocaleString()} / ₹${Math.round(price.avg||0).toLocaleString()} / ₹${(price.max||0).toLocaleString()}</span></div>
+    </div>
+  `;
+}
+
 function renderPosFilters(players) {
   const div=document.getElementById('posFilter');
   const pos=['ALL',...new Set(players.map(p=>p.position))].filter(Boolean);
@@ -1030,14 +1081,15 @@ function openTeamModal(id){
   document.getElementById('tmId').value=t?.id||('T'+Date.now());
   document.getElementById('tmName').value=t?.name||'';
   document.getElementById('tmColor').value=t?.color||'#e63946';
-  document.getElementById('tmBudget').value=t?.budget||8000;
+  document.getElementById('tmBudget').value=t?.budget||(S.config?.teamBudgetLimit||1500);
   document.getElementById('tmLogo').value=t?.logo||'';
   document.getElementById('tmLogoPreview').src=t?.logo||'';
   openModal('teamModal');
 }
 function saveTeam(){
   const name=document.getElementById('tmName').value.trim();
-  const budget=parseFloat(document.getElementById('tmBudget').value);
+  const budgetLimit=S.config?.teamBudgetLimit||1500;
+  const budget=Math.min(budgetLimit, Math.max(1, parseFloat(document.getElementById('tmBudget').value)));
   if(!name||!budget){alert('Name and budget required.');return;}
   socket.emit('admin:saveTeam',{id:document.getElementById('tmId').value,name,color:document.getElementById('tmColor').value,budget,logo:document.getElementById('tmLogo').value.trim()});
   closeModal('teamModal');
