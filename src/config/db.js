@@ -95,9 +95,17 @@ async function connectDB() {
       leading_team_json LONGTEXT,
       bid_history_json LONGTEXT NOT NULL,
       sold_players_json LONGTEXT NOT NULL,
+      timer_seconds INT NOT NULL DEFAULT 10,
+      timer_ends_at BIGINT NULL,
       previous_bid_snapshot_json LONGTEXT,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
+  `);
+
+  await pool.query(`
+    ALTER TABLE auction_state
+    ADD COLUMN IF NOT EXISTS timer_seconds INT NOT NULL DEFAULT 10,
+    ADD COLUMN IF NOT EXISTS timer_ends_at BIGINT NULL
   `);
 }
 
@@ -233,7 +241,7 @@ async function saveTeams(teams) {
 
 async function loadAuctionState() {
   const [rows] = await getPool().query(
-    `SELECT phase, current_player_json, current_bid, leading_team_json, bid_history_json, sold_players_json, previous_bid_snapshot_json
+    `SELECT phase, current_player_json, current_bid, leading_team_json, bid_history_json, sold_players_json, timer_seconds, timer_ends_at, previous_bid_snapshot_json
      FROM auction_state
      WHERE id = 1`,
   );
@@ -249,6 +257,8 @@ async function loadAuctionState() {
       leadingTeam: parseJSON(row.leading_team_json, null),
       bidHistory: parseJSON(row.bid_history_json, []),
       soldPlayers: parseJSON(row.sold_players_json, []),
+      timerSeconds: Number(row.timer_seconds || 10),
+      timerEndsAt: row.timer_ends_at === null ? null : Number(row.timer_ends_at),
     },
     previousBidSnapshot: parseJSON(row.previous_bid_snapshot_json, null),
   };
@@ -257,8 +267,8 @@ async function loadAuctionState() {
 async function saveAuctionState({ auctionState, previousBidSnapshot }) {
   await getPool().query(
     `INSERT INTO auction_state
-     (id, phase, current_player_json, current_bid, leading_team_json, bid_history_json, sold_players_json, previous_bid_snapshot_json)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+     (id, phase, current_player_json, current_bid, leading_team_json, bid_history_json, sold_players_json, timer_seconds, timer_ends_at, previous_bid_snapshot_json)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        phase = VALUES(phase),
        current_player_json = VALUES(current_player_json),
@@ -266,6 +276,8 @@ async function saveAuctionState({ auctionState, previousBidSnapshot }) {
        leading_team_json = VALUES(leading_team_json),
        bid_history_json = VALUES(bid_history_json),
        sold_players_json = VALUES(sold_players_json),
+       timer_seconds = VALUES(timer_seconds),
+       timer_ends_at = VALUES(timer_ends_at),
        previous_bid_snapshot_json = VALUES(previous_bid_snapshot_json)`,
     [
       auctionState.phase,
@@ -274,6 +286,8 @@ async function saveAuctionState({ auctionState, previousBidSnapshot }) {
       JSON.stringify(auctionState.leadingTeam),
       JSON.stringify(auctionState.bidHistory || []),
       JSON.stringify(auctionState.soldPlayers || []),
+      Number(auctionState.timerSeconds || 10),
+      auctionState.timerEndsAt === null ? null : Number(auctionState.timerEndsAt),
       JSON.stringify(previousBidSnapshot),
     ],
   );

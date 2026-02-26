@@ -64,6 +64,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
 .tb-r{text-align:right}
 .tb-budget{font-size:1.4rem;font-weight:800;color:var(--green)}
 .tb-blbl{font-family:var(--ffm);font-size:0.52rem;color:var(--td);letter-spacing:0.06em;text-transform:uppercase}
+.tb-timer{font-family:var(--ffm);font-size:0.72rem;letter-spacing:0.08em;color:var(--green)}
+.tb-timer.crit{color:var(--red);animation:gp 0.8s infinite}
 
 /* Tabs */
 .tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border)}
@@ -190,6 +192,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
     </div>
     <div class="tb-r">
       <div class="tb-budget" id="tbBudget">₹0</div>
+      <div class="tb-timer" id="tbTimer">--</div>
       <div class="tb-blbl">Remaining</div>
     </div>
   </div>
@@ -281,12 +284,23 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
 
 <script>
 const socket = io();
-let S = { auctionState:{phase:'idle',currentBid:0,leadingTeam:null,bidHistory:[]}, teams:[], players:[], config:{} };
+let S = { auctionState:{phase:'idle',currentBid:0,leadingTeam:null,bidHistory:[],timerRemaining:0}, teams:[], players:[], config:{} };
 let myTeamId = null, selId = null, curTab = 'live';
 
 socket.on('stateUpdate', data => {
   S = data;
   if (!myTeamId) renderLogin(); else renderApp();
+});
+socket.on('timerUpdate', ({ remaining }) => {
+  S.auctionState = { ...(S.auctionState||{}), timerRemaining: remaining };
+  if (myTeamId) renderTopTimer();
+});
+socket.on('timerFinalSeconds', ({ remaining }) => {
+  S.auctionState = { ...(S.auctionState||{}), timerRemaining: remaining };
+  if (myTeamId) {
+    playBeep(remaining <= 1 ? 950 : 700, 110);
+    renderTopTimer();
+  }
 });
 
 // ── LOGIN ──────────────────────────────────────────────────────────────────
@@ -334,10 +348,24 @@ function renderApp() {
   const ph = document.getElementById('phDot');
   ph.textContent = phase.toUpperCase();
   ph.className   = `phase-dot pd-${phase}`;
+  renderTopTimer();
 
   if (curTab==='live')      renderLive(team);
   if (curTab==='squad')     renderSquad(team);
   if (curTab==='standings') renderStandings(team);
+}
+
+function renderTopTimer() {
+  const timer = document.getElementById('tbTimer');
+  const phase = S.auctionState.phase;
+  const sec = Math.max(0, Number(S.auctionState.timerRemaining || 0));
+  if (phase !== 'live') {
+    timer.className = 'tb-timer';
+    timer.textContent = '--';
+    return;
+  }
+  timer.className = `tb-timer${sec <= 3 ? ' crit' : ''}`;
+  timer.textContent = `Timer ${sec}s`;
 }
 
 // ── LIVE TAB ─────────────────────────────────────────────────────────────────
@@ -487,6 +515,22 @@ function showTab(id) {
 }
 
 function timeAgo(ts){const s=Math.floor((Date.now()-ts)/1000);if(s<60)return`${s}s`;if(s<3600)return`${Math.floor(s/60)}m`;return`${Math.floor(s/3600)}h`;}
+
+function playBeep(freq = 700, duration = 100) {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  if (!window.__pplAudioCtx) window.__pplAudioCtx = new Ctx();
+  const ctx = window.__pplAudioCtx;
+  if (ctx.state === 'suspended') ctx.resume();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = freq;
+  gain.gain.value = 0.03;
+  osc.connect(gain).connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + (duration / 1000));
+}
 </script>
 </body>
 </html>

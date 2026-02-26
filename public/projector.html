@@ -78,6 +78,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   font-family:var(--ffm);font-size:min(1.1vw,0.82rem);
   letter-spacing:0.25em;text-transform:uppercase;color:var(--td);
 }
+.countdown{
+  font-family:var(--ffm);font-size:min(2.3vw,1.6rem);letter-spacing:0.12em;color:var(--green);
+  padding:0.22rem 0.8rem;border-radius:18px;border:1px solid rgba(0,230,118,0.3);background:rgba(0,230,118,0.08)
+}
+.countdown.crit{color:var(--red);border-color:rgba(255,71,87,0.5);background:rgba(255,71,87,0.12);animation:blink 0.8s infinite}
 .bid-amount{
   font-size:min(12vw,9rem);font-weight:900;color:var(--green);
   line-height:0.85;text-align:center;
@@ -237,6 +242,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
     <!-- COLUMN 2: BID CENTER -->
     <div class="col-bid">
       <div class="bid-lbl">Current Bid</div>
+      <div class="countdown" id="countdown">10s</div>
       <div class="bid-amount" id="bidAmount">₹0</div>
 
       <div class="leader-block">
@@ -288,9 +294,18 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 
 <script>
 const socket = io();
-let S = { auctionState:{phase:'idle',currentBid:0}, teams:[], players:[], config:{} };
+let S = { auctionState:{phase:'idle',currentBid:0,timerRemaining:0}, teams:[], players:[], config:{} };
 
 socket.on('stateUpdate', data => { S=data; render(); });
+socket.on('timerUpdate', ({ remaining }) => {
+  S.auctionState = { ...(S.auctionState||{}), timerRemaining: remaining };
+  renderCountdown(S.auctionState.phase, remaining);
+});
+socket.on('timerFinalSeconds', ({ remaining }) => {
+  S.auctionState = { ...(S.auctionState||{}), timerRemaining: remaining };
+  playBeep(remaining <= 1 ? 980 : 720, 130);
+  renderCountdown(S.auctionState.phase, remaining);
+});
 socket.on('bidFlash', () => {
   const el = document.getElementById('bidAmount');
   el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
@@ -302,6 +317,7 @@ function render() {
   const { auctionState:as, teams, config } = S;
   renderIdle(config);
   renderStrip(as, teams);
+  renderCountdown(as.phase, as.timerRemaining ?? 0);
 
   if (!as.currentPlayer || as.phase==='idle') {
     document.getElementById('idleScreen').style.display='flex';
@@ -369,6 +385,34 @@ function renderLive(as, config) {
     document.getElementById('leagueBadgeTxt').textContent = config.leagueSeason||'';
     badge.style.display = 'flex';
   } else badge.style.display = 'none';
+}
+
+function renderCountdown(phase, remaining) {
+  const el = document.getElementById('countdown');
+  if (phase !== 'live') {
+    el.className = 'countdown';
+    el.textContent = '--';
+    return;
+  }
+  const sec = Math.max(0, Number(remaining || 0));
+  el.className = `countdown${sec <= 3 ? ' crit' : ''}`;
+  el.textContent = `${sec}s`;
+}
+
+function playBeep(freq = 720, duration = 120) {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  if (!window.__pplAudioCtx) window.__pplAudioCtx = new Ctx();
+  const ctx = window.__pplAudioCtx;
+  if (ctx.state === 'suspended') ctx.resume();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.value = freq;
+  gain.gain.value = 0.04;
+  osc.connect(gain).connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + (duration / 1000));
 }
 
 function renderStrip(as, teams) {

@@ -14,8 +14,79 @@ const {
 } = require('../services/auctionService');
 
 function registerSocketHandlers(io) {
+  let timerInterval = null;
+  let lastTimerSecondNotified = null;
+  let lastTimerSecondBroadcast = null;
+
   function broadcastState() {
     io.emit('stateUpdate', getPublicState());
+  }
+
+  function stopAuctionTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    lastTimerSecondNotified = null;
+    lastTimerSecondBroadcast = null;
+  }
+
+  function getTimerRemainingSeconds() {
+    const state = getPublicState().auctionState;
+    if (!state.timerEndsAt) return 0;
+    return Math.max(0, Math.ceil((state.timerEndsAt - Date.now()) / 1000));
+  }
+
+  async function closeOnTimerEnd() {
+    const state = getPublicState().auctionState;
+    if (state.phase !== 'live') {
+      stopAuctionTimer();
+      return;
+    }
+
+    if (state.leadingTeam) {
+      const result = await markSold();
+      if (result.ok) {
+        broadcastState();
+        io.emit('playerSold', {
+          player: result.player,
+          team: result.team,
+          price: result.price,
+        });
+      }
+    } else {
+      const player = await markUnsold();
+      if (player) {
+        broadcastState();
+        io.emit('playerUnsold', { player });
+      }
+    }
+
+    io.emit('timerExpired');
+    stopAuctionTimer();
+  }
+
+  function ensureAuctionTimer() {
+    stopAuctionTimer();
+    const state = getPublicState().auctionState;
+    if (state.phase !== 'live' || !state.timerEndsAt) return;
+
+    timerInterval = setInterval(async () => {
+      const remaining = getTimerRemainingSeconds();
+      if (remaining !== lastTimerSecondBroadcast) {
+        lastTimerSecondBroadcast = remaining;
+        io.emit('timerUpdate', { remaining });
+      }
+
+      if (remaining > 0 && remaining <= 3 && remaining !== lastTimerSecondNotified) {
+        lastTimerSecondNotified = remaining;
+        io.emit('timerFinalSeconds', { remaining });
+      }
+
+      if (remaining <= 0) {
+        await closeOnTimerEnd();
+      }
+    }, 250);
   }
 
   function isAdmin(socket) {
@@ -55,6 +126,7 @@ function registerSocketHandlers(io) {
       const started = await startAuction(playerId);
       if (!started) return;
       broadcastState();
+      ensureAuctionTimer();
     });
 
     socket.on('placeBid', async ({ teamId, amount }) => {
@@ -67,6 +139,7 @@ function registerSocketHandlers(io) {
 
       broadcastState();
       io.emit('bidFlash', { team: result.team, amount: result.amount });
+      ensureAuctionTimer();
     });
 
     socket.on('admin:undoBid', async () => {
@@ -76,6 +149,7 @@ function registerSocketHandlers(io) {
 
       broadcastState();
       io.emit('bidUndo');
+      ensureAuctionTimer();
     });
 
     socket.on('admin:sold', async () => {
@@ -89,6 +163,7 @@ function registerSocketHandlers(io) {
         team: result.team,
         price: result.price,
       });
+      stopAuctionTimer();
     });
 
     socket.on('admin:unsold', async () => {
@@ -98,18 +173,21 @@ function registerSocketHandlers(io) {
 
       broadcastState();
       io.emit('playerUnsold', { player });
+      stopAuctionTimer();
     });
 
     socket.on('admin:idle', async () => {
       if (denyIfNotAdmin(socket)) return;
       await setIdle();
       broadcastState();
+      stopAuctionTimer();
     });
 
     socket.on('admin:resetAllTeams', async () => {
       if (denyIfNotAdmin(socket)) return;
       await resetAuctionAndTeams();
       broadcastState();
+      stopAuctionTimer();
     });
 
     socket.on('admin:addPlayer', async (player) => {
@@ -152,12 +230,15 @@ function registerSocketHandlers(io) {
       if (denyIfNotAdmin(socket)) return;
       await updateConfig(cfg || {});
       broadcastState();
+      ensureAuctionTimer();
     });
 
     socket.on('disconnect', () => {
       console.log(`[-] ${socket.id}`);
     });
   });
+
+  ensureAuctionTimer();
 }
 
 module.exports = {

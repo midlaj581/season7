@@ -51,8 +51,17 @@ function getTeamMaxBid(team) {
 }
 
 function getPublicState() {
+  const auctionState = getAuctionState();
+  const now = Date.now();
+  const computedTimerRemaining = auctionState.timerEndsAt
+    ? Math.max(0, Math.ceil((auctionState.timerEndsAt - now) / 1000))
+    : 0;
+
   return {
-    auctionState: getAuctionState(),
+    auctionState: {
+      ...auctionState,
+      timerRemaining: computedTimerRemaining,
+    },
     teams: getTeams(),
     players: getPlayers(),
     config: sanitizeConfig(getConfig()),
@@ -64,6 +73,8 @@ async function startAuction(playerId) {
   if (!player || player.status !== 'available') return false;
 
   const currentState = getAuctionState();
+  const config = getConfig();
+  const timerSeconds = Number(config.auctionTimerSeconds || 10);
   setPreviousBidSnapshot(null);
   setAuctionState({
     phase: 'live',
@@ -72,6 +83,8 @@ async function startAuction(playerId) {
     leadingTeam: null,
     bidHistory: [],
     soldPlayers: currentState.soldPlayers,
+    timerSeconds,
+    timerEndsAt: Date.now() + (timerSeconds * 1000),
   });
   await persistAuctionState();
 
@@ -135,6 +148,7 @@ async function placeBid({ teamId, amount }) {
     amount: numericAmount,
     ts: Date.now(),
   });
+  auctionState.timerEndsAt = Date.now() + (Number(auctionState.timerSeconds || 10) * 1000);
 
   await persistAuctionState();
   return { ok: true, team, amount: numericAmount, player: auctionState.currentPlayer };
@@ -176,6 +190,7 @@ async function markSold() {
   team.players.push({ ...player });
 
   auctionState.phase = 'sold';
+  auctionState.timerEndsAt = null;
   auctionState.soldPlayers = [
     ...auctionState.soldPlayers,
     { player, team: team.name, teamColor: team.color, teamLogo: team.logo, price },
@@ -196,6 +211,7 @@ async function markUnsold() {
   }
 
   auctionState.phase = 'unsold';
+  auctionState.timerEndsAt = null;
   setPreviousBidSnapshot(null);
   await Promise.all([persistPlayers(), persistAuctionState()]);
 
@@ -209,6 +225,7 @@ async function setIdle() {
     currentBid: 0,
     leadingTeam: null,
     bidHistory: [],
+    timerEndsAt: null,
   });
   setPreviousBidSnapshot(null);
   await persistAuctionState();
@@ -225,6 +242,8 @@ async function resetAuctionAndTeams() {
     leadingTeam: null,
     bidHistory: [],
     soldPlayers: [],
+    timerSeconds: Number(getConfig().auctionTimerSeconds || 10),
+    timerEndsAt: null,
   });
 
   setPreviousBidSnapshot(null);

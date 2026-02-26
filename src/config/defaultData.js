@@ -6,6 +6,7 @@ const defaultConfig = {
   thresholdBid: 200,
   highIncrement: 20,
   lowIncrement: 10,
+  auctionTimerSeconds: 10,
   adminPassword: 'ppl2024',
 };
 
@@ -66,6 +67,8 @@ const defaultAuctionState = {
   leadingTeam: null,
   bidHistory: [],
   soldPlayers: [],
+  timerSeconds: 10,
+  timerEndsAt: null,
 };
 
 module.exports = {

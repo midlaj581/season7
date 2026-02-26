@@ -56,6 +56,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
 .pp-unsold{border-color:var(--red);color:var(--red)}
 @keyframes glow{0%,100%{box-shadow:none}50%{box-shadow:0 0 10px var(--glow)}}
 .tb-r{display:flex;gap:0.45rem}
+.timer-pill{
+  padding:0.25rem 0.7rem;border-radius:20px;font-family:var(--ffm);font-size:0.68rem;letter-spacing:0.08em;
+  border:1px solid var(--border);color:var(--td);display:none;align-items:center;gap:0.35rem
+}
+.timer-pill.live{display:inline-flex;border-color:var(--gb);color:var(--green);background:var(--gd)}
+.timer-pill.crit{border-color:rgba(255,71,87,0.4);color:var(--red);background:rgba(255,71,87,0.12);animation:glow 0.9s infinite}
 .links{display:flex;gap:0.45rem;padding:0.5rem 1.5rem;background:var(--bg2);border-bottom:1px solid var(--border)}
 .links a{color:var(--green);text-decoration:none;padding:0.18rem 0.65rem;border:1px solid var(--gb);border-radius:4px;font-family:var(--ffm);font-size:0.62rem;letter-spacing:0.06em;transition:all 0.15s}
 .links a:hover{background:var(--gd)}
@@ -79,6 +85,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
 .stage-name{font-size:1.9rem;font-weight:900;line-height:1;letter-spacing:0.03em;margin-bottom:0.2rem}
 .stage-meta{font-family:var(--ffm);font-size:0.6rem;color:var(--td);margin-bottom:0.7rem}
 .bid-row{display:flex;align-items:flex-end;gap:1.1rem;flex-wrap:wrap}
+.timer-big{font-size:2rem;font-weight:900;line-height:1;color:var(--green);min-width:3.2ch;text-align:right}
+.timer-big.crit{color:var(--red);text-shadow:0 0 10px rgba(255,71,87,0.45)}
 .bid-block label{font-family:var(--ffm);font-size:0.56rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--tm);display:block;margin-bottom:0.12rem}
 .bid-val{font-size:2.5rem;font-weight:900;color:var(--green);line-height:1}
 .bid-val.flash{animation:bFlash 0.4s ease}
@@ -281,6 +289,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
     <div class="phase-pill pp-idle" id="phasePill">IDLE</div>
   </div>
   <div class="tb-r">
+    <div class="timer-pill" id="topTimer">TIMER <span id="topTimerVal">10s</span></div>
     <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙ Settings</button>
     <button class="btn btn-danger btn-sm" onclick="confirmReset()">🗑 Reset All</button>
   </div>
@@ -316,6 +325,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
             <label>Leading</label>
             <div class="lchip" id="sLeader" style="background:#2a2a40;color:#555">— No bid —</div>
           </div>
+          <div class="timer-big" id="stageTimer">10s</div>
         </div>
       </div>
     </div>
@@ -546,6 +556,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
       <div></div>
       <div><label class="fl">Increment BELOW threshold</label><input class="fi" id="cfgHi" type="number" oninput="updateIncPrev()"/></div>
       <div><label class="fl">Increment AT/ABOVE threshold</label><input class="fi" id="cfgLo" type="number" oninput="updateIncPrev()"/></div>
+      <div><label class="fl">Auction Timer (sec)</label><input class="fi" id="cfgTimer" type="number" min="5" max="60"/></div>
+      <div></div>
       <div class="inc-prev full" id="incPrev"></div>
       <div style="grid-column:1/-1;height:1px;background:var(--border);margin:0.2rem 0"></div>
       <div class="full"><label class="fl">Admin Password (blank = keep current)</label><input class="fi" id="cfgPw" type="text" placeholder="Leave blank to keep current"/></div>
@@ -643,6 +655,17 @@ if (sessionStorage.getItem('ppl_admin')==='1') {
 
 // ── SOCKET ───────────────────────────────────────────────────────────────────
 socket.on('stateUpdate', data => { S=data; render(); });
+socket.on('timerUpdate', ({ remaining }) => {
+  const as = S.auctionState || {};
+  S.auctionState = { ...as, timerRemaining: remaining };
+  renderTimer(as.phase, remaining);
+});
+socket.on('timerFinalSeconds', ({ remaining }) => {
+  const as = S.auctionState || {};
+  S.auctionState = { ...as, timerRemaining: remaining };
+  playBeep(remaining <= 1 ? 980 : 740, 110);
+  renderTimer(as.phase, remaining);
+});
 socket.on('bidFlash', () => {
   const el=document.getElementById('sBid');
   el.classList.remove('flash','undo-f'); void el.offsetWidth; el.classList.add('flash');
@@ -671,6 +694,7 @@ function render() {
   renderBidLog(as.bidHistory);
   renderSold(as.soldPlayers);
   renderPosFilters(players);
+  renderTimer(as.phase, as.timerRemaining ?? 0);
 }
 
 function renderPhasePill(phase) {
@@ -693,6 +717,7 @@ function renderStage(as, cfg) {
   const bU=document.getElementById('btnUnsold');
   if(!p||phase==='idle'){
     idle.style.display='';content.style.display='none';nbb.style.display='none';
+    document.getElementById('stageTimer').textContent='--';
     bS.disabled=true;bU.disabled=true;return;
   }
   idle.style.display='none';content.style.display='';nbb.style.display='flex';
@@ -713,8 +738,45 @@ function renderStage(as, cfg) {
   document.getElementById('nbbBase').textContent=`Base: ₹${p.basePrice}`;
   const thresh=cfg.thresholdBid??200;
   document.getElementById('nbbNote').textContent=currentBid<thresh?`→ +₹${cfg.lowIncrement} at ₹${thresh}`:`Using +₹${cfg.lowIncrement}`;
+  document.getElementById('stageTimer').textContent=`${as.timerRemaining ?? 0}s`;
   bS.disabled=!leadingTeam||phase!=='live';
   bU.disabled=phase!=='live';
+}
+
+function renderTimer(phase, remaining) {
+  const top = document.getElementById('topTimer');
+  const topVal = document.getElementById('topTimerVal');
+  const stage = document.getElementById('stageTimer');
+  const sec = Math.max(0, Number(remaining || 0));
+
+  if (phase === 'live') {
+    top.className = 'timer-pill live';
+    if (sec <= 3) top.className += ' crit';
+    topVal.textContent = `${sec}s`;
+    stage.classList.toggle('crit', sec <= 3);
+    stage.textContent = `${sec}s`;
+  } else {
+    top.className = 'timer-pill';
+    topVal.textContent = '--';
+    stage.classList.remove('crit');
+    stage.textContent = '--';
+  }
+}
+
+function playBeep(freq = 740, duration = 120) {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  if (!window.__pplAudioCtx) window.__pplAudioCtx = new Ctx();
+  const ctx = window.__pplAudioCtx;
+  if (ctx.state === 'suspended') ctx.resume();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = freq;
+  gain.gain.value = 0.03;
+  osc.connect(gain).connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + (duration / 1000));
 }
 
 function renderTeamGrid(as, teams, cfg) {
@@ -946,6 +1008,7 @@ function openSettings(){
   document.getElementById('cfgThresh').value=c.thresholdBid||200;
   document.getElementById('cfgHi').value=c.highIncrement||20;
   document.getElementById('cfgLo').value=c.lowIncrement||10;
+  document.getElementById('cfgTimer').value=c.auctionTimerSeconds||10;
   document.getElementById('cfgPw').value='';
   updateIncPrev();
   openModal('settingsModal');
@@ -957,7 +1020,7 @@ function updateIncPrev(){
   document.getElementById('incPrev').innerHTML=`Increment: <span>+₹${hi}</span> while bid &lt; ₹${t} → switches to <span>+₹${lo}</span> at ₹${t}`;
 }
 function saveSettings(){
-  const cfg={leagueName:document.getElementById('cfgName').value.trim(),leagueSeason:document.getElementById('cfgSeason').value.trim(),leagueLogo:document.getElementById('cfgLogo').value.trim(),minPlayersPerTeam:parseInt(document.getElementById('cfgMin').value)||10,thresholdBid:parseInt(document.getElementById('cfgThresh').value)||200,highIncrement:parseInt(document.getElementById('cfgHi').value)||20,lowIncrement:parseInt(document.getElementById('cfgLo').value)||10};
+  const cfg={leagueName:document.getElementById('cfgName').value.trim(),leagueSeason:document.getElementById('cfgSeason').value.trim(),leagueLogo:document.getElementById('cfgLogo').value.trim(),minPlayersPerTeam:parseInt(document.getElementById('cfgMin').value)||10,thresholdBid:parseInt(document.getElementById('cfgThresh').value)||200,highIncrement:parseInt(document.getElementById('cfgHi').value)||20,lowIncrement:parseInt(document.getElementById('cfgLo').value)||10,auctionTimerSeconds:parseInt(document.getElementById('cfgTimer').value)||10};
   const pw=document.getElementById('cfgPw').value.trim();
   if(pw)cfg.adminPassword=pw;
   socket.emit('admin:updateConfig',cfg);
