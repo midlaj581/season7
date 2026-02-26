@@ -666,19 +666,65 @@ async function uploadToCloudinary(fileInput, urlFieldId, previewId, statusId) {
 
 // ── LOGIN ────────────────────────────────────────────────────────────────────
 document.getElementById('pwIn').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
-function doLogin() {
-  const pw = document.getElementById('pwIn').value;
-  socket.emit('admin:verifyPassword', { password: pw }, ({ ok }) => {
-    if (ok) {
-      document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('adminApp').style.display   = 'block';
-      sessionStorage.setItem('ppl_admin','1');
-    } else {
-      document.getElementById('pwErr').textContent = '✕ Wrong password';
-      document.getElementById('pwIn').value = '';
-      setTimeout(() => document.getElementById('pwErr').textContent = '', 2500);
-    }
+function verifyPasswordViaSocket(password, timeoutMs = 3000) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      reject(new Error('socket-timeout'));
+    }, timeoutMs);
+
+    socket.emit('admin:verifyPassword', { password }, (resp) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(!!resp?.ok);
+    });
   });
+}
+
+async function verifyPasswordViaHttp(password) {
+  const res = await fetch('/api/admin/verify-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) throw new Error(`http-${res.status}`);
+  const data = await res.json();
+  return !!data?.ok;
+}
+
+async function doLogin() {
+  const pw = (document.getElementById('pwIn').value || '').trim();
+  const errEl = document.getElementById('pwErr');
+  if (!pw) {
+    errEl.textContent = 'Enter password';
+    return;
+  }
+
+  let ok = false;
+  try {
+    ok = await verifyPasswordViaSocket(pw);
+  } catch (_) {
+    try {
+      ok = await verifyPasswordViaHttp(pw);
+    } catch (error) {
+      errEl.textContent = 'Server auth unavailable. Refresh and try again.';
+      return;
+    }
+  }
+
+  if (ok) {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('adminApp').style.display   = 'block';
+    sessionStorage.setItem('ppl_admin','1');
+    errEl.textContent = '';
+  } else {
+    errEl.textContent = 'Wrong password';
+    document.getElementById('pwIn').value = '';
+    setTimeout(() => document.getElementById('pwErr').textContent = '', 2500);
+  }
 }
 if (sessionStorage.getItem('ppl_admin')==='1') {
   document.getElementById('loginScreen').style.display = 'none';
@@ -1172,3 +1218,4 @@ render();
 </script>
 </body>
 </html>
+
