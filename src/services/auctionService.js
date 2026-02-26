@@ -220,6 +220,59 @@ async function markUnsold() {
   return auctionState.currentPlayer;
 }
 
+async function revertLastSold() {
+  const auctionState = getAuctionState();
+  if (auctionState.phase === 'live') {
+    return { ok: false, error: 'Cannot revert while auction is live.' };
+  }
+
+  const soldPlayers = auctionState.soldPlayers || [];
+  if (!soldPlayers.length) {
+    return { ok: false, error: 'No sold player to revert.' };
+  }
+
+  const lastSale = soldPlayers[soldPlayers.length - 1];
+  const soldPlayerId = Number(lastSale?.player?.id);
+  const revertPrice = Number(lastSale?.price || 0);
+  const soldToName = lastSale?.team;
+
+  const player = findPlayerById(soldPlayerId);
+  if (!player) {
+    return { ok: false, error: 'Sold player not found.' };
+  }
+
+  const team = getTeams().find((candidate) => candidate.name === soldToName);
+
+  player.status = 'available';
+  delete player.soldTo;
+  delete player.soldPrice;
+
+  if (team) {
+    team.spent = Math.max(0, Number(team.spent || 0) - revertPrice);
+    const idx = team.players.findIndex((p) => Number(p.id) === soldPlayerId);
+    if (idx >= 0) {
+      team.players.splice(idx, 1);
+    }
+  }
+
+  auctionState.soldPlayers = soldPlayers.slice(0, -1);
+  if (
+    auctionState.phase === 'sold'
+    && Number(auctionState.currentPlayer?.id) === soldPlayerId
+  ) {
+    auctionState.phase = 'idle';
+    auctionState.currentPlayer = null;
+    auctionState.currentBid = 0;
+    auctionState.leadingTeam = null;
+    auctionState.bidHistory = [];
+  }
+  auctionState.timerEndsAt = null;
+  setPreviousBidSnapshot(null);
+
+  await Promise.all([persistPlayers(), persistTeams(), persistAuctionState()]);
+  return { ok: true, player, team, price: revertPrice };
+}
+
 async function setIdle() {
   patchAuctionState({
     phase: 'idle',
@@ -261,6 +314,7 @@ module.exports = {
   undoBid,
   markSold,
   markUnsold,
+  revertLastSold,
   setIdle,
   resetAuctionAndTeams,
 };

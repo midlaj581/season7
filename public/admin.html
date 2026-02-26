@@ -320,7 +320,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
   <span>Open on screens →</span>
   <a href="/projector.html" target="_blank">🖥 Projector</a>
   <a href="/manager.html" target="_blank">👤 Manager</a>
-  <span class="kbd-hint">Shortcuts: `S` sold, `U` unsold, `Z` undo, `I` idle, `/` search</span>
+  <span class="kbd-hint">Shortcuts: `S` sold, `U` unsold, `Z` undo, `R` revert sale, `I` idle, `/` search</span>
 </div>
 
 <div class="layout">
@@ -381,6 +381,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
         <button class="btn btn-green" id="btnSold"   onclick="doSold()"   disabled>🔨 SOLD!</button>
         <button class="btn btn-red"   id="btnUnsold" onclick="doUnsold()" disabled>✗ UNSOLD</button>
         <button class="btn btn-undo"  id="btnUndo"   onclick="doUndo()"   disabled>↩ UNDO</button>
+        <button class="btn btn-ghost" id="btnRevertSale" onclick="doRevertLastSold()" disabled>↺ Revert Sale</button>
         <button class="btn btn-ghost" onclick="doIdle()">↺ Reset</button>
       </div>
     </div>
@@ -764,6 +765,13 @@ socket.on('backupImported', () => {
   el.textContent='Backup imported successfully.';
   setTimeout(()=>{el.textContent='';el.style.color='';},3000);
 });
+socket.on('saleReverted', ({ player, team, price }) => {
+  const el=document.getElementById('bidErr');
+  const teamName = team?.name || player?.soldTo || 'team';
+  el.style.color='var(--green)';
+  el.textContent=`Reverted sale: ${player?.name || 'Player'} from ${teamName} (₹${Number(price||0).toLocaleString()})`;
+  setTimeout(()=>{el.textContent='';el.style.color='';},3500);
+});
 
 // ── RENDER ───────────────────────────────────────────────────────────────────
 function render() {
@@ -800,6 +808,8 @@ function renderStage(as, cfg) {
   const nbb=document.getElementById('nextBidBar');
   const bS=document.getElementById('btnSold');
   const bU=document.getElementById('btnUnsold');
+  const bR=document.getElementById('btnRevertSale');
+  bR.disabled=(as.phase==='live')||!(as.soldPlayers?.length);
   if(!p||phase==='idle'){
     idle.style.display='';content.style.display='none';nbb.style.display='none';
     document.getElementById('stageTimer').textContent='--';
@@ -1056,6 +1066,19 @@ function doSold(){if(confirm(`⚡ SOLD to ${S.auctionState.leadingTeam?.name} @ 
 function doUnsold(){socket.emit('admin:unsold');}
 function doIdle(){socket.emit('admin:idle');document.getElementById('btnUndo').disabled=true;}
 function doUndo(){socket.emit('admin:undoBid');}
+function doRevertLastSold(){
+  if(!S.auctionState?.soldPlayers?.length){alert('No sold player to revert.');return;}
+  if(S.auctionState?.phase==='live'){alert('Stop live auction before reverting sale.');return;}
+  const last=S.auctionState.soldPlayers[S.auctionState.soldPlayers.length-1];
+  const name=last?.player?.name||'player';
+  const team=last?.team||'-';
+  const price=Number(last?.price||0).toLocaleString();
+  if(!confirm(`Revert last sold player?\n\n${name} from ${team} @ ₹${price}`)) return;
+  socket.emit('admin:revertLastSold', {}, (resp)=>{
+    if(resp?.ok) return;
+    alert(resp?.error||'Could not revert sale.');
+  });
+}
 function raiseFor(tid){socket.emit('placeBid',{teamId:tid,amount:S.auctionState.currentBid+getInc(S.auctionState.currentBid,S.config)});}
 function placeManual(){
   const tid=document.getElementById('manualTeam').value;
@@ -1247,6 +1270,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='s'||e.key==='S') doSold();
   if(e.key==='u'||e.key==='U') doUnsold();
   if(e.key==='z'||e.key==='Z') doUndo();
+  if(e.key==='r'||e.key==='R') doRevertLastSold();
   if(e.key==='i'||e.key==='I') doIdle();
   if(e.key==='t'||e.key==='T') toggleTheme();
 });
