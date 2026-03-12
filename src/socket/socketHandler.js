@@ -43,7 +43,7 @@ function registerSocketHandlers(io) {
 
   async function closeOnTimerEnd() {
     const state = getPublicState().auctionState;
-    if (state.phase !== 'live') {
+    if (state.phase !== 'live' || !state.timerEndsAt) {
       stopAuctionTimer();
       return;
     }
@@ -76,6 +76,12 @@ function registerSocketHandlers(io) {
     if (state.phase !== 'live' || !state.timerEndsAt) return;
 
     timerInterval = setInterval(async () => {
+      const latestState = getPublicState().auctionState;
+      if (latestState.phase !== 'live' || !latestState.timerEndsAt) {
+        stopAuctionTimer();
+        return;
+      }
+
       const remaining = getTimerRemainingSeconds();
       if (remaining !== lastTimerSecondBroadcast) {
         lastTimerSecondBroadcast = remaining;
