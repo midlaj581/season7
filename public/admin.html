@@ -62,6 +62,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
 .pp-unsold{border-color:var(--red);color:var(--red)}
 @keyframes glow{0%,100%{box-shadow:none}50%{box-shadow:0 0 10px var(--glow)}}
 .tb-r{display:flex;gap:0.45rem}
+.sys-pill{
+  padding:0.25rem 0.7rem;border-radius:20px;font-family:var(--ffm);font-size:0.62rem;letter-spacing:0.08em;
+  border:1px solid var(--border);color:var(--td);display:inline-flex;align-items:center;gap:0.35rem
+}
+.sys-pill.ok{border-color:var(--gb);color:var(--green);background:var(--gd)}
+.sys-pill.warn{border-color:rgba(255,193,7,0.35);color:var(--yellow);background:rgba(255,193,7,0.08)}
+.sys-pill.err{border-color:rgba(255,71,87,0.35);color:var(--red);background:var(--rd)}
 .timer-pill{
   padding:0.25rem 0.7rem;border-radius:20px;font-family:var(--ffm);font-size:0.68rem;letter-spacing:0.08em;
   border:1px solid var(--border);color:var(--td);display:none;align-items:center;gap:0.35rem
@@ -307,6 +314,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
     <div class="phase-pill pp-idle" id="phasePill">IDLE</div>
   </div>
   <div class="tb-r">
+    <div class="sys-pill warn" id="sysPill">SYSTEM <span id="sysPillText">Syncing</span></div>
     <div class="timer-pill" id="topTimer">TIMER <span id="topTimerVal">10s</span></div>
     <button class="btn btn-ghost btn-sm" onclick="toggleTheme()">Theme</button>
     <button class="btn btn-ghost btn-sm" onclick="exportBackup()">Export Backup</button>
@@ -600,6 +608,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:15px
 
 <script>
 const socket = io();
+let lastBackupAt = null;
+let socketHealthy = false;
 let S = { auctionState:{phase:'idle',currentBid:0,bidHistory:[],soldPlayers:[]}, teams:[], players:[], config:{} };
 let posFilter = 'ALL';
 
@@ -736,6 +746,14 @@ if (sessionStorage.getItem('ppl_admin')==='1') {
 
 // ── SOCKET ───────────────────────────────────────────────────────────────────
 socket.on('stateUpdate', data => { S=data; render(); });
+socket.on('connect', () => {
+  socketHealthy = true;
+  renderSystemPill();
+});
+socket.on('disconnect', () => {
+  socketHealthy = false;
+  renderSystemPill();
+});
 socket.on('timerUpdate', ({ remaining }) => {
   const as = S.auctionState || {};
   S.auctionState = { ...as, timerRemaining: remaining };
@@ -765,6 +783,8 @@ socket.on('backupImported', () => {
   const el=document.getElementById('bidErr');
   el.style.color='var(--green)';
   el.textContent='Backup imported successfully.';
+  lastBackupAt = Date.now();
+  renderSystemPill();
   setTimeout(()=>{el.textContent='';el.style.color='';},3000);
 });
 socket.on('saleReverted', ({ player, team, price }) => {
@@ -780,6 +800,7 @@ function render() {
   const { auctionState:as, teams, players, config } = S;
   renderPhasePill(as.phase);
   renderBranding(config);
+  renderSystemPill();
   renderStage(as, config);
   renderTeamGrid(as, teams, config);
   renderManualSel(teams);
@@ -790,6 +811,24 @@ function render() {
   renderAnalytics(S.analytics);
   renderPosFilters(players);
   renderTimer(as.phase, as.timerRemaining ?? 0);
+}
+
+function renderSystemPill() {
+  const pill = document.getElementById('sysPill');
+  const txt = document.getElementById('sysPillText');
+  const paused = S?.auctionState?.phase === 'live' && !S?.auctionState?.timerEndsAt;
+  if (!socketHealthy) {
+    pill.className = 'sys-pill err';
+    txt.textContent = 'Offline';
+    return;
+  }
+  if (paused) {
+    pill.className = 'sys-pill warn';
+    txt.textContent = 'Timer Paused';
+    return;
+  }
+  pill.className = 'sys-pill ok';
+  txt.textContent = lastBackupAt ? `Live • Backup ${timeAgo(lastBackupAt)} ago` : 'Live • DB Active';
 }
 
 function renderPhasePill(phase) {
@@ -1122,6 +1161,8 @@ function exportBackup() {
       alert(resp?.error || 'Backup export failed.');
       return;
     }
+    lastBackupAt = Date.now();
+    renderSystemPill();
     const json = JSON.stringify(resp.snapshot, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

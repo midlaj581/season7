@@ -441,6 +441,7 @@ body::before{
           <div class="ticker-item">League <strong id="tickerLeague">PPL</strong></div>
           <div class="ticker-item">Season <strong id="tickerSeason">Season 7</strong></div>
           <div class="ticker-item">Current Phase <strong id="tickerPhase">Idle</strong></div>
+          <div class="ticker-item">Timer <strong id="tickerTimer">--</strong></div>
           <div class="ticker-item">Live Player <strong id="tickerPlayer">Waiting</strong></div>
         </div>
       </div>
@@ -546,6 +547,17 @@ body::before{
       </div>
     </div>
   </section>
+
+  <section class="footbar" style="margin-top:16px">
+    <div class="foot-card">
+      <h3>Latest Sale</h3>
+      <div class="system-note" id="latestSale">No completed sale yet.</div>
+    </div>
+    <div class="foot-card">
+      <h3>Timer Status</h3>
+      <div class="system-note" id="timerNote">Countdown status will appear here when the auction goes live.</div>
+    </div>
+  </section>
 </div>
 
 <script>
@@ -578,6 +590,8 @@ function renderLanding(data) {
   document.getElementById('tickerLeague').textContent = leagueName;
   document.getElementById('tickerSeason').textContent = seasonName;
   document.getElementById('tickerPhase').textContent = titleCase(phase);
+  const paused = phase === 'live' && !auctionState.timerEndsAt;
+  document.getElementById('tickerTimer').textContent = phase !== 'live' ? '--' : paused ? 'Paused' : `${Number(auctionState.timerRemaining || 0)}s`;
   document.getElementById('tickerPlayer').textContent = currentPlayer?.name || 'Waiting';
 
   const logo = document.getElementById('leagueLogo');
@@ -607,6 +621,15 @@ function renderLanding(data) {
   document.getElementById('snapshotBid').textContent = formatRs(auctionState.currentBid || 0);
   document.getElementById('snapshotPhase').textContent = titleCase(phase);
   document.getElementById('snapshotLeader').textContent = leadingTeam?.name || 'None';
+  const lastSale = soldPlayers.length ? soldPlayers[soldPlayers.length - 1] : null;
+  document.getElementById('latestSale').textContent = lastSale
+    ? `${lastSale.player?.name || 'Player'} sold to ${lastSale.team || 'team'} for ${formatRs(lastSale.price || 0)}.`
+    : 'No completed sale yet.';
+  document.getElementById('timerNote').textContent = phase !== 'live'
+    ? 'Countdown status will appear here when the auction goes live.'
+    : paused
+      ? `Timer is paused on ${currentPlayer?.name || 'the current lot'}.`
+      : `Timer is running with ${Number(auctionState.timerRemaining || 0)} seconds left on ${currentPlayer?.name || 'the current lot'}.`;
 
   document.getElementById('systemNote').textContent = phase === 'live'
     ? `Auction is live for ${currentPlayer?.name || 'the current lot'}. Highest visible bid is ${formatRs(auctionState.currentBid || 0)} and ${leadingTeam?.name || 'no team'} is currently in front.`

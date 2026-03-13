@@ -74,6 +74,13 @@ body.light{
 .tb-timer.crit{color:var(--red);animation:gp 0.8s infinite}
 .theme-btn{margin-top:0.2rem;background:transparent;border:1px solid var(--border);color:var(--td);padding:0.1rem 0.45rem;border-radius:4px;font-family:var(--ffm);font-size:0.56rem;cursor:pointer}
 .theme-btn:hover{border-color:var(--gb);color:var(--green)}
+.alertbar{margin:1rem 1.2rem 0;padding:0.75rem 0.95rem;border-radius:var(--r);border:1px solid var(--border);background:var(--card);display:flex;align-items:center;justify-content:space-between;gap:0.8rem;flex-wrap:wrap}
+.alertbar.warn{border-color:rgba(255,193,7,0.28);background:rgba(255,193,7,0.08)}
+.alertbar.live{border-color:var(--gb);background:var(--gd)}
+.ab-main{font-size:0.92rem;font-weight:700}
+.ab-main strong{color:var(--green)}
+.ab-main .warn{color:var(--yellow)}
+.ab-side{font-family:var(--ffm);font-size:0.58rem;letter-spacing:0.08em;color:var(--td);text-transform:uppercase}
 
 /* Tabs */
 .tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border)}
@@ -224,6 +231,11 @@ body.light{
     <div class="tab active" onclick="showTab('live')">📺 Live</div>
     <div class="tab" onclick="showTab('squad')">👥 My Squad</div>
     <div class="tab" onclick="showTab('standings')">🏆 Standings</div>
+  </div>
+
+  <div class="alertbar" id="alertBar">
+    <div class="ab-main" id="alertMain">Auction status updates will appear here.</div>
+    <div class="ab-side" id="alertSide">Manager signal</div>
   </div>
 
   <!-- LIVE TAB -->
@@ -384,6 +396,7 @@ function renderApp() {
   ph.textContent = phase.toUpperCase();
   ph.className   = `phase-dot pd-${phase}`;
   renderTopTimer();
+  renderAlertBar(team);
 
   if (curTab==='live')      renderLive(team);
   if (curTab==='squad')     renderSquad(team);
@@ -399,8 +412,53 @@ function renderTopTimer() {
     timer.textContent = '--';
     return;
   }
-  timer.className = `tb-timer${sec <= 3 ? ' crit' : ''}`;
-  timer.textContent = `Timer ${sec}s`;
+  const paused = !S.auctionState.timerEndsAt;
+  timer.className = `tb-timer${!paused && sec <= 3 ? ' crit' : ''}`;
+  timer.textContent = paused ? 'Timer paused' : `Timer ${sec}s`;
+}
+
+function renderAlertBar(team) {
+  const bar = document.getElementById('alertBar');
+  const main = document.getElementById('alertMain');
+  const side = document.getElementById('alertSide');
+  const as = S.auctionState || {};
+  const rem = team.budget - team.spent;
+  const need = Math.max(0, (S.config.minPlayersPerTeam || 10) - team.players.length);
+  const maxBid = calcMaxBid(team, as);
+  const paused = as.phase === 'live' && !as.timerEndsAt;
+
+  bar.className = `alertbar ${as.phase === 'live' ? 'live' : ''}`;
+  if (paused) bar.className = 'alertbar warn';
+
+  if (as.phase !== 'live' || !as.currentPlayer) {
+    main.innerHTML = need > 0
+      ? `Need <span class="warn">${need}</span> more player${need !== 1 ? 's' : ''}. Budget left <strong>Rs ${rem.toLocaleString()}</strong>.`
+      : `Squad target reached. Budget left <strong>Rs ${rem.toLocaleString()}</strong>.`;
+    side.textContent = 'Pre-auction planning';
+    return;
+  }
+
+  if (paused) {
+    main.innerHTML = `Timer paused on <strong>${as.currentPlayer.name}</strong>. Max safe bid <strong>Rs ${maxBid.toLocaleString()}</strong>.`;
+    side.textContent = 'Hold decision';
+    return;
+  }
+
+  main.innerHTML = `Live on <strong>${as.currentPlayer.name}</strong>. Max safe bid <strong>Rs ${maxBid.toLocaleString()}</strong>${as.leadingTeam?.id === myTeamId ? ' and your team is leading.' : '.'}`;
+  side.textContent = `Budget left Rs ${rem.toLocaleString()}`;
+}
+
+function calcMaxBid(team, as) {
+  const rem = team.budget - team.spent;
+  const slotsNeeded = Math.max(0, (S.config.minPlayersPerTeam || 10) - team.players.length - 1);
+  if (slotsNeeded === 0) return rem;
+  const pool = S.players
+    .filter((player) => player.status === 'available' && player.id !== as.currentPlayer?.id)
+    .map((player) => player.basePrice)
+    .sort((a, b) => a - b)
+    .slice(0, slotsNeeded);
+  while (pool.length < slotsNeeded) pool.push(pool[pool.length - 1] ?? 0);
+  return Math.max(0, rem - pool.reduce((sum, value) => sum + value, 0));
 }
 
 // ── LIVE TAB ─────────────────────────────────────────────────────────────────

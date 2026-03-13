@@ -41,6 +41,22 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 #mainScreen{
   position:fixed;inset:0;display:none;flex-direction:column;
 }
+.broadcast-bar{
+  position:absolute;left:min(1.2vw,16px);top:min(1.4vh,14px);z-index:36;
+  display:flex;align-items:center;gap:min(1vw,12px);flex-wrap:wrap;
+  max-width:min(66vw,900px)
+}
+.bb-chip{
+  padding:min(0.7vh,8px) min(1vw,12px);
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.08);
+  background:rgba(6,6,16,0.74);
+  backdrop-filter:blur(10px);
+  font-family:var(--ffm);font-size:min(0.95vw,0.68rem);letter-spacing:0.12em;text-transform:uppercase;color:var(--td)
+}
+.bb-chip strong{color:var(--text);font-weight:500}
+.bb-chip.live{border-color:rgba(0,230,118,0.3);color:var(--green);background:rgba(0,230,118,0.08)}
+.bb-chip.warn{border-color:rgba(255,193,7,0.35);color:var(--yellow);background:rgba(255,193,7,0.08)}
 .leaderboard-float{
   position:absolute;right:min(1.2vw,16px);top:min(1.4vh,14px);z-index:35;
   width:min(24vw,340px);background:rgba(6,6,16,0.72);border:1px solid rgba(0,230,118,0.2);
@@ -228,6 +244,19 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .r-tlogo{width:min(8vw,72px);height:min(8vw,72px);object-fit:contain;border-radius:6px}
 .r-tname{font-size:min(4vw,3rem);font-weight:900;letter-spacing:0.05em}
 .r-price{font-family:var(--ffm);font-size:min(2.5vw,1.8rem);color:var(--green);letter-spacing:0.05em}
+.recent-sale{
+  position:absolute;left:min(1.2vw,16px);bottom:min(11vh,92px);z-index:35;
+  width:min(28vw,390px);padding:min(1.3vh,12px) min(1vw,12px);border-radius:10px;
+  border:1px solid rgba(255,255,255,0.08);background:rgba(6,6,16,0.72);backdrop-filter:blur(10px)
+}
+.rs-head{font-family:var(--ffm);font-size:min(0.9vw,0.64rem);letter-spacing:0.16em;color:var(--td);text-transform:uppercase;margin-bottom:0.45rem}
+.rs-empty{font-size:min(1vw,0.74rem);color:var(--td);font-family:var(--ffm)}
+.rs-row{display:flex;align-items:center;gap:0.65rem}
+.rs-photo{width:min(4.6vw,44px);height:min(4.6vw,44px);object-fit:cover;object-position:top;border-radius:6px;flex-shrink:0}
+.rs-info{flex:1;min-width:0}
+.rs-name{font-size:min(1.5vw,1.05rem);font-weight:800;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rs-meta{font-family:var(--ffm);font-size:min(0.82vw,0.58rem);color:var(--td);margin-top:0.18rem}
+.rs-price{font-family:var(--ffm);font-size:min(1.05vw,0.74rem);color:var(--green)}
 </style>
 </head>
 <body>
@@ -242,6 +271,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 
 <!-- MAIN SCREEN -->
 <div id="mainScreen">
+  <div class="broadcast-bar">
+    <div class="bb-chip" id="phaseChip">Phase <strong>Idle</strong></div>
+    <div class="bb-chip" id="playerChip">Lot <strong>Waiting</strong></div>
+    <div class="bb-chip" id="leaderChip">Leader <strong>None</strong></div>
+  </div>
   <div class="main-area">
     <div class="leaderboard-float">
       <div class="lb-head">Live Leaderboard</div>
@@ -293,6 +327,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 
   <!-- TEAMS STRIP -->
   <div id="strip"></div>
+  <div class="recent-sale">
+    <div class="rs-head">Latest Sale</div>
+    <div id="recentSale"><div class="rs-empty">No completed sale yet.</div></div>
+  </div>
 </div>
 
 <!-- RESULT OVERLAY -->
@@ -332,6 +370,8 @@ function render() {
   renderIdle(config);
   renderStrip(as, teams);
   renderLeaderboard(teams, as.leadingTeam?.id);
+  renderBroadcastBar(as);
+  renderRecentSale(as.soldPlayers || []);
   renderCountdown(as.phase, as.timerRemaining ?? 0);
 
   if (!as.currentPlayer || as.phase==='idle') {
@@ -342,6 +382,35 @@ function render() {
   document.getElementById('idleScreen').style.display='none';
   document.getElementById('mainScreen').style.display='flex';
   renderLive(as, config);
+}
+
+function renderBroadcastBar(as) {
+  const phaseChip = document.getElementById('phaseChip');
+  const playerChip = document.getElementById('playerChip');
+  const leaderChip = document.getElementById('leaderChip');
+  const paused = as.phase === 'live' && !as.timerEndsAt;
+
+  phaseChip.className = `bb-chip ${as.phase === 'live' ? (paused ? 'warn' : 'live') : ''}`;
+  phaseChip.innerHTML = `Phase <strong>${paused ? 'Paused' : (as.phase || 'idle').toUpperCase()}</strong>`;
+  playerChip.innerHTML = `Lot <strong>${as.currentPlayer?.name || 'Waiting'}</strong>`;
+  leaderChip.innerHTML = `Leader <strong>${as.leadingTeam?.name || 'None'}</strong>`;
+}
+
+function renderRecentSale(soldPlayers) {
+  const panel = document.getElementById('recentSale');
+  const last = soldPlayers?.length ? soldPlayers[soldPlayers.length - 1] : null;
+  if (!last) {
+    panel.innerHTML = '<div class="rs-empty">No completed sale yet.</div>';
+    return;
+  }
+  panel.innerHTML = `<div class="rs-row">
+    <img class="rs-photo" src="${last.player.photo}" alt=""/>
+    <div class="rs-info">
+      <div class="rs-name">${last.player.name}</div>
+      <div class="rs-meta" style="color:${last.teamColor || 'var(--td)'}">${last.team || 'No team'} | ${last.player.position || '-'}</div>
+    </div>
+    <div class="rs-price">Rs ${Number(last.price || 0).toLocaleString()}</div>
+  </div>`;
 }
 
 function renderLeaderboard(teams, leadingId) {
@@ -422,8 +491,9 @@ function renderCountdown(phase, remaining) {
     return;
   }
   const sec = Math.max(0, Number(remaining || 0));
-  el.className = `countdown${sec <= 3 ? ' crit' : ''}`;
-  el.textContent = `${sec}s`;
+  const paused = !S.auctionState.timerEndsAt;
+  el.className = `countdown${!paused && sec <= 3 ? ' crit' : ''}`;
+  el.textContent = paused ? 'PAUSED' : `${sec}s`;
 }
 
 function playBeep(freq = 720, duration = 120) {
