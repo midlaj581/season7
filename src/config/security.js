@@ -1,3 +1,4 @@
+// PPL Season 7 — security.js — upgraded
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
@@ -6,6 +7,9 @@ const { verifyAdminToken } = require('../services/authService');
 function createCorsOptions() {
   const configuredOrigin = process.env.CORS_ORIGIN;
   if (!configuredOrigin || configuredOrigin === '*') {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('CORS_ORIGIN must be set in production. Wildcard "*" is not allowed.');
+    }
     return { origin: true, credentials: true };
   }
 

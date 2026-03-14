@@ -1,3 +1,4 @@
+// PPL Season 7 — backupService.js — upgraded
 const fs = require('fs/promises');
 const path = require('path');
 
@@ -6,12 +7,14 @@ const { getPlayers, replacePlayers } = require('../models/Player');
 const { getTeams, replaceTeams } = require('../models/Team');
 const {
   getAuctionState,
-  getPreviousBidSnapshot,
+  getUndoStack,
   replaceAuction,
 } = require('../models/Auction');
 const { sanitizeConfig } = require('../utils/helpers');
+const { logger } = require('../utils/logger');
 
 const BACKUP_DIR = path.join(process.cwd(), 'backups');
+const MAX_AUTO_BACKUPS = 50;
 
 function ts() {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -30,9 +33,33 @@ function buildSnapshot() {
       players: getPlayers(),
       teams: getTeams(),
       auctionState: getAuctionState(),
-      previousBidSnapshot: getPreviousBidSnapshot(),
+      undoStack: getUndoStack(),
     },
   };
+}
+
+async function rotateAutoBackups() {
+  try {
+    const files = await fs.readdir(BACKUP_DIR);
+    const autoBackups = files
+      .filter((f) => f.startsWith('auto-backup-'))
+      .map((f) => ({ name: f, path: path.join(BACKUP_DIR, f) }));
+
+    if (autoBackups.length > MAX_AUTO_BACKUPS) {
+      const statPromises = autoBackups.map(async (f) => ({
+        ...f,
+        mtime: (await fs.stat(f.path)).mtime.getTime(),
+      }));
+      const withStats = await Promise.all(statPromises);
+      withStats.sort((a, b) => a.mtime - b.mtime);
+      const toDelete = withStats.slice(0, withStats.length - MAX_AUTO_BACKUPS);
+      for (const f of toDelete) {
+        await fs.unlink(f.path);
+      }
+    }
+  } catch (err) {
+    // ignore
+  }
 }
 
 async function writeSnapshotToFile(snapshot, prefix = 'auction-backup') {
@@ -40,6 +67,7 @@ async function writeSnapshotToFile(snapshot, prefix = 'auction-backup') {
   const filename = `${prefix}-${ts()}.json`;
   const fullpath = path.join(BACKUP_DIR, filename);
   await fs.writeFile(fullpath, JSON.stringify(snapshot, null, 2), 'utf8');
+  if (prefix === 'auto-backup') await rotateAutoBackups();
   return { filename, fullpath };
 }
 
@@ -63,17 +91,23 @@ function normalizeIncomingSnapshot(payload) {
     throw new Error('Invalid backup format.');
   }
 
-  const { config, players, teams, auctionState, previousBidSnapshot } = parsed.data;
+  const { config, players, teams, auctionState, previousBidSnapshot, undoStack } = parsed.data;
   if (!Array.isArray(players) || !Array.isArray(teams) || !auctionState || typeof auctionState !== 'object') {
     throw new Error('Backup missing required sections.');
   }
+
+  const stack = Array.isArray(undoStack)
+    ? undoStack
+    : previousBidSnapshot
+      ? (Array.isArray(previousBidSnapshot) ? previousBidSnapshot : [previousBidSnapshot])
+      : [];
 
   return {
     config: config || {},
     players,
     teams,
     auctionState,
-    previousBidSnapshot: previousBidSnapshot ?? null,
+    undoStack: stack,
   };
 }
 
@@ -83,7 +117,7 @@ async function importBackup(payload) {
   await replaceConfigFromBackup(normalized.config);
   await replacePlayers(normalized.players);
   await replaceTeams(normalized.teams);
-  await replaceAuction(normalized.auctionState, normalized.previousBidSnapshot);
+  await replaceAuction(normalized.auctionState, normalized.undoStack);
 
   return normalized;
 }
@@ -96,7 +130,7 @@ function startAutoBackupJob(intervalMs = 30_000) {
     try {
       await createAutoBackup();
     } catch (error) {
-      console.error('Auto-backup failed:', error.message);
+      logger.error({ err: error }, 'Auto-backup failed');
     } finally {
       running = false;
     }

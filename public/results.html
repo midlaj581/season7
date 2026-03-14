@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- PPL Season 7 — results.html — upgraded -->
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>PPL S7 — Auction Results</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#05050f;--surface:#0e0e1f;--border:#1e1e3a;--green:#00e676;--blue:#40c4ff;--yellow:#ffc107;--red:#ff5252;--text:#eeeef8;--muted:#5555a8;--ff:'Barlow Condensed',sans-serif;--ffm:'DM Mono',monospace;font-variant-numeric:tabular-nums}
+body{background:var(--bg);color:var(--text);font-family:var(--ff);min-height:100vh;padding:1.5rem}
+h1{font-size:2.5rem;font-weight:900;letter-spacing:0.08em;margin-bottom:0.5rem}
+.sub{font-family:var(--ffm);font-size:0.7rem;color:var(--muted);letter-spacing:0.15em;margin-bottom:2rem}
+.section{margin-bottom:2rem}
+.section h2{font-size:1.4rem;font-weight:800;margin-bottom:1rem;border-left:4px solid var(--green);padding-left:0.75rem}
+.team-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1rem}
+.team-card h3{font-size:1.2rem;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem}
+.team-dot{width:12px;height:12px;border-radius:50%}
+.team-meta{font-family:var(--ffm);font-size:0.7rem;color:var(--muted);margin-bottom:0.75rem}
+.player-row{display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid rgba(30,30,58,0.5);font-size:0.95rem}
+.player-row:last-child{border-bottom:none}
+.player-row .pos{background:var(--green);color:#000;padding:0.1rem 0.4rem;border-radius:3px;font-size:0.7rem;font-weight:800}
+.player-row .price{font-family:var(--ffm);color:var(--green);margin-left:auto}
+.unsold-list{display:flex;flex-wrap:wrap;gap:0.5rem}
+.unsold-pill{background:var(--surface);border:1px solid var(--border);padding:0.4rem 0.8rem;border-radius:6px;font-size:0.9rem}
+.chart-wrap{max-width:600px;height:300px;margin:1rem 0}
+</style>
+</head>
+<body>
+<h1 id="title">Auction Results</h1>
+<div class="sub" id="subtitle">Season 7 · Complete Summary</div>
+
+<div class="section">
+  <h2>Teams & Spending</h2>
+  <div id="teamsContainer"></div>
+</div>
+
+<div class="section">
+  <h2>Budget vs Spent</h2>
+  <div class="chart-wrap"><canvas id="budgetChart"></canvas></div>
+</div>
+
+<div class="section">
+  <h2>Unsold Players</h2>
+  <div class="unsold-list" id="unsoldContainer"></div>
+</div>
+
+<script>
+async function loadResults() {
+  try {
+    const res = await fetch('/api/auction/history');
+    const hist = await res.json();
+    const stateRes = await fetch('/api/state');
+    const state = await stateRes.json();
+    const { teams = [], players = [], config = {} } = state;
+    const soldPlayers = hist.soldPlayers || [];
+
+    document.getElementById('title').textContent = (config.leagueName || 'PPL') + ' Results';
+    document.getElementById('subtitle').textContent = (config.leagueSeason || 'Season 7') + ' · Complete Summary';
+
+    const byTeam = {};
+    soldPlayers.forEach((s) => {
+      const name = s.team || 'Unknown';
+      if (!byTeam[name]) byTeam[name] = { team: name, color: s.teamColor || '#666', logo: s.teamLogo, players: [], total: 0 };
+      byTeam[name].players.push({ name: s.player?.name, position: s.player?.position, price: s.price });
+      byTeam[name].total += Number(s.price || 0);
+    });
+
+    const teamsData = teams.map((t) => ({
+      ...t,
+      sold: byTeam[t.name]?.players || [],
+      soldTotal: byTeam[t.name]?.total || 0,
+    }));
+
+    let html = '';
+    teamsData.forEach((t) => {
+      const rem = t.budget - t.spent;
+      html += `<div class="team-card">
+        <h3><span class="team-dot" style="background:${t.color}"></span>${t.name}</h3>
+        <div class="team-meta">Budget ₹${(t.budget||0).toLocaleString()} · Spent ₹${(t.spent||0).toLocaleString()} · Remaining ₹${rem.toLocaleString()}</div>
+        ${(t.players||[]).map((p)=>`<div class="player-row"><span class="pos">${p.position||'-'}</span>${p.name||'-'}<span class="price">₹${(p.soldPrice||0).toLocaleString()}</span></div>`).join('')}
+      </div>`;
+    });
+    document.getElementById('teamsContainer').innerHTML = html || '<p style="color:var(--muted)">No teams or sales yet.</p>';
+
+    const unsold = players.filter((p) => p.status === 'available' || p.status === 'unsold');
+    document.getElementById('unsoldContainer').innerHTML = unsold.map((p) =>
+      `<span class="unsold-pill">${p.name} (${p.position})</span>`
+    ).join('') || '<span class="unsold-pill">All players sold</span>';
+
+    const ctx = document.getElementById('budgetChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: teamsData.map((t) => t.name),
+        datasets: [
+          { label: 'Budget', data: teamsData.map((t) => t.budget), backgroundColor: 'rgba(64,196,255,0.4)' },
+          { label: 'Spent', data: teamsData.map((t) => t.spent), backgroundColor: 'rgba(0,230,118,0.6)' },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true } },
+        plugins: { legend: { labels: { color: '#eeeef8' } } },
+      },
+    });
+  } catch (e) {
+    document.getElementById('teamsContainer').innerHTML = '<p style="color:var(--red)">Failed to load results. Ensure auction has run.</p>';
+  }
+}
+loadResults();
+</script>
+</body>
+</html>

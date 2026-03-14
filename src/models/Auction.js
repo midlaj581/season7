@@ -1,14 +1,28 @@
+// PPL Season 7 — Auction.js — upgraded
 const { saveAuctionState, loadAuctionState } = require('../config/db');
 const { defaultAuctionState } = require('../config/defaultData');
 
+const UNDO_STACK_MAX = 5;
+
 let auctionState = { ...defaultAuctionState };
-let previousBidSnapshot = null;
+let undoStack = [];
+
+function migrateSnapshotToStack(snapshot) {
+  if (snapshot && typeof snapshot === 'object') {
+    undoStack = [snapshot];
+  } else {
+    undoStack = Array.isArray(snapshot) ? snapshot.slice(0, UNDO_STACK_MAX) : [];
+  }
+}
 
 async function initAuction() {
   const fromDb = await loadAuctionState();
   if (fromDb) {
     auctionState = { ...defaultAuctionState, ...fromDb.auctionState };
-    previousBidSnapshot = fromDb.previousBidSnapshot || null;
+    const stack = Array.isArray(fromDb.undoStack) && fromDb.undoStack.length
+      ? fromDb.undoStack
+      : fromDb.previousBidSnapshot ?? null;
+    migrateSnapshotToStack(stack);
     return;
   }
 
@@ -30,20 +44,34 @@ function patchAuctionState(nextValues) {
 }
 
 function getPreviousBidSnapshot() {
-  return previousBidSnapshot;
+  return undoStack[0] || null;
 }
 
 function setPreviousBidSnapshot(snapshot) {
-  previousBidSnapshot = snapshot;
+  if (!snapshot) return;
+  undoStack.unshift(snapshot);
+  if (undoStack.length > UNDO_STACK_MAX) undoStack.pop();
+}
+
+function getUndoStack() {
+  return [...undoStack];
+}
+
+function popUndoSnapshot() {
+  return undoStack.shift() || null;
+}
+
+function clearUndoStack() {
+  undoStack = [];
 }
 
 async function persistAuctionState() {
-  await saveAuctionState({ auctionState, previousBidSnapshot });
+  await saveAuctionState({ auctionState, previousBidSnapshot: undoStack });
 }
 
-async function replaceAuction(nextAuctionState, nextPreviousBidSnapshot = null) {
+async function replaceAuction(nextAuctionState, nextUndoStack = null) {
   auctionState = { ...defaultAuctionState, ...(nextAuctionState || {}) };
-  previousBidSnapshot = nextPreviousBidSnapshot;
+  undoStack = Array.isArray(nextUndoStack) ? nextUndoStack.slice(0, UNDO_STACK_MAX) : [];
   await persistAuctionState();
 }
 
@@ -54,6 +82,9 @@ module.exports = {
   patchAuctionState,
   getPreviousBidSnapshot,
   setPreviousBidSnapshot,
+  getUndoStack,
+  popUndoSnapshot,
+  clearUndoStack,
   persistAuctionState,
   replaceAuction,
 };

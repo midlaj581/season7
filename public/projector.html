@@ -7,9 +7,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <script src="/socket.io/socket.io.js"></script>
 <style>
+/* PPL Season 7 — projector.html — premium dark sports UI */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#060610;--green:#00e676;--red:#ff4757;--yellow:#ffc107;
+  --bg:#05050f;--surface:#0e0e1f;--border:#1e1e3a;
+  --green:#00e676;--red:#ff5252;--yellow:#ffc107;--blue:#40c4ff;
   --text:#eeeef8;--td:#5555a8;
   --ff:'Barlow Condensed',sans-serif;--ffm:'DM Mono',monospace;
 }
@@ -21,11 +23,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   align-items:center;justify-content:center;
   background:var(--bg);
   background-image:
-    radial-gradient(ellipse 55% 45% at 30% 50%,rgba(0,230,118,0.05) 0%,transparent 60%),
-    radial-gradient(ellipse 55% 45% at 70% 50%,rgba(64,196,255,0.04) 0%,transparent 60%),
-    linear-gradient(rgba(0,230,118,0.025) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(0,230,118,0.025) 1px,transparent 1px);
-  background-size:100% 100%,100% 100%,52px 52px,52px 52px;
+    radial-gradient(ellipse 55% 45% at 30% 50%,rgba(0,230,118,0.06) 0%,transparent 60%),
+    radial-gradient(ellipse 55% 45% at 70% 50%,rgba(64,196,255,0.05) 0%,transparent 60%),
+    linear-gradient(rgba(0,230,118,0.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,230,118,0.04) 1px,transparent 1px);
+  background-size:100% 100%,100% 100%,48px 48px,48px 48px;
 }
 .idle-logo{width:min(15vw,130px);height:min(15vw,130px);object-fit:contain;margin-bottom:1.5rem}
 .idle-name{font-size:min(13vw,9rem);font-weight:900;letter-spacing:0.2em;
@@ -48,10 +50,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 }
 .bb-chip{
   padding:min(0.7vh,8px) min(1vw,12px);
-  border-radius:999px;
-  border:1px solid rgba(255,255,255,0.08);
-  background:rgba(6,6,16,0.74);
-  backdrop-filter:blur(10px);
+  border-radius:0;
+  border:1px solid var(--border);
+  background:var(--surface);
   font-family:var(--ffm);font-size:min(0.95vw,0.68rem);letter-spacing:0.12em;text-transform:uppercase;color:var(--td)
 }
 .bb-chip strong{color:var(--text);font-weight:500}
@@ -59,8 +60,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .bb-chip.warn{border-color:rgba(255,193,7,0.35);color:var(--yellow);background:rgba(255,193,7,0.08)}
 .leaderboard-float{
   position:absolute;right:min(1.2vw,16px);top:min(1.4vh,14px);z-index:35;
-  width:min(24vw,340px);background:rgba(6,6,16,0.72);border:1px solid rgba(0,230,118,0.2);
-  border-radius:8px;padding:min(1.2vh,10px) min(1vw,10px);backdrop-filter:blur(10px)
+  width:min(24vw,340px);background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:min(1.2vh,10px) min(1vw,10px)
 }
 .lb-head{font-family:var(--ffm);font-size:min(0.95vw,0.66rem);letter-spacing:0.12em;color:var(--td);text-transform:uppercase;margin-bottom:0.4rem}
 .lb-row{display:flex;align-items:center;justify-content:space-between;gap:0.45rem;padding:0.25rem 0.15rem;border-bottom:1px solid rgba(255,255,255,0.06);animation:slideIn .35s ease}

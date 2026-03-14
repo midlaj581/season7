@@ -1,3 +1,4 @@
+// PPL Season 7 — socketHandler.js — upgraded
 const { verifyAdminPassword, updateConfig } = require('../models/Config');
 const { addPlayer, editPlayer, removePlayer, resetPlayer } = require('../models/Player');
 const { saveTeam, removeTeam } = require('../models/Team');
@@ -15,9 +16,28 @@ const {
   revertLastSold,
   setIdle,
   resetAuctionAndTeams,
+  getUndoStackDepth,
 } = require('../services/auctionService');
+const { validate, placeBidSchema, playerIdSchema, teamIdSchema, playerFieldsSchema, teamFieldsSchema, playerEditSchema } = require('../utils/validation');
+const { logger } = require('../utils/logger');
+
+const PLACE_BID_MAX_PER_SECOND = 5;
+
+function createPlaceBidRateLimiter() {
+  const timestamps = new Map();
+  return function checkLimit(socketId) {
+    const now = Date.now();
+    let list = timestamps.get(socketId) || [];
+    list = list.filter((ts) => now - ts < 1000);
+    if (list.length >= PLACE_BID_MAX_PER_SECOND) return false;
+    list.push(now);
+    timestamps.set(socketId, list);
+    return true;
+  };
+}
 
 function registerSocketHandlers(io) {
+  const placeBidCheckLimit = createPlaceBidRateLimiter();
   let timerInterval = null;
   let lastTimerSecondNotified = null;
   let lastTimerSecondBroadcast = null;
@@ -112,7 +132,7 @@ function registerSocketHandlers(io) {
   io.on('connection', (socket) => {
     socket.data.isAdmin = false;
     socket.emit('stateUpdate', getPublicState());
-    console.log(`[+] ${socket.id}`);
+    logger.info({ socketId: socket.id }, 'Socket connected');
 
     socket.on('admin:auth', ({ token }, cb) => {
       try {
@@ -131,16 +151,31 @@ function registerSocketHandlers(io) {
       if (cb) cb({ ok });
     });
 
-    socket.on('admin:startAuction', async ({ playerId }) => {
+    socket.on('admin:startAuction', async (payload, cb) => {
       if (denyIfNotAdmin(socket)) return;
-      const started = await startAuction(playerId);
+      const v = validate(playerIdSchema, payload);
+      if (!v.ok) {
+        socket.emit('authError', { msg: v.error });
+        if (cb) cb({ ok: false });
+        return;
+      }
+      const started = await startAuction(v.data.playerId);
       if (!started) return;
       broadcastState();
       ensureAuctionTimer();
     });
 
-    socket.on('placeBid', async ({ teamId, amount }) => {
-      const result = await placeBid({ teamId, amount });
+    socket.on('placeBid', async (payload) => {
+      if (!placeBidCheckLimit(socket.id)) {
+        socket.emit('bidError', { msg: 'Too many bids. Max 5 per second.' });
+        return;
+      }
+      const v = validate(placeBidSchema, payload);
+      if (!v.ok) {
+        socket.emit('bidError', { msg: v.error });
+        return;
+      }
+      const result = await placeBid({ teamId: v.data.teamId, amount: v.data.amount });
 
       if (!result.ok) {
         socket.emit('bidError', { msg: result.error });
@@ -160,6 +195,12 @@ function registerSocketHandlers(io) {
       broadcastState();
       io.emit('bidUndo');
       ensureAuctionTimer();
+    });
+
+    socket.on('admin:undoStack', (_, cb) => {
+      if (denyIfNotAdmin(socket)) return;
+      const depth = getUndoStackDepth();
+      if (cb) cb({ depth });
     });
 
     socket.on('admin:sold', async () => {
@@ -242,40 +283,82 @@ function registerSocketHandlers(io) {
       stopAuctionTimer();
     });
 
-    socket.on('admin:addPlayer', async (player) => {
+    socket.on('admin:addPlayer', async (player, cb) => {
       if (denyIfNotAdmin(socket)) return;
-      await addPlayer(player);
+      const v = validate(playerFieldsSchema, player);
+      if (!v.ok) {
+        socket.emit('authError', { msg: v.error });
+        if (cb) cb({ ok: false });
+        return;
+      }
+      await addPlayer(v.data);
       broadcastState();
+      if (cb) cb({ ok: true });
     });
 
-    socket.on('admin:editPlayer', async (updated) => {
+    socket.on('admin:editPlayer', async (updated, cb) => {
       if (denyIfNotAdmin(socket)) return;
-      await editPlayer(updated);
+      const v = validate(playerEditSchema, updated);
+      if (!v.ok) {
+        socket.emit('authError', { msg: v.error });
+        if (cb) cb({ ok: false });
+        return;
+      }
+      await editPlayer(v.data);
       broadcastState();
+      if (cb) cb({ ok: true });
     });
 
-    socket.on('admin:removePlayer', async ({ playerId }) => {
+    socket.on('admin:removePlayer', async (payload, cb) => {
       if (denyIfNotAdmin(socket)) return;
-      await removePlayer(playerId);
+      const v = validate(playerIdSchema, payload);
+      if (!v.ok) {
+        socket.emit('authError', { msg: v.error });
+        if (cb) cb({ ok: false });
+        return;
+      }
+      await removePlayer(v.data.playerId);
       broadcastState();
+      if (cb) cb({ ok: true });
     });
 
-    socket.on('admin:resetPlayer', async ({ playerId }) => {
+    socket.on('admin:resetPlayer', async (payload, cb) => {
       if (denyIfNotAdmin(socket)) return;
-      await resetPlayer(playerId);
+      const v = validate(playerIdSchema, payload);
+      if (!v.ok) {
+        socket.emit('authError', { msg: v.error });
+        if (cb) cb({ ok: false });
+        return;
+      }
+      await resetPlayer(v.data.playerId);
       broadcastState();
+      if (cb) cb({ ok: true });
     });
 
-    socket.on('admin:saveTeam', async (team) => {
+    socket.on('admin:saveTeam', async (team, cb) => {
       if (denyIfNotAdmin(socket)) return;
-      await saveTeam(team);
+      const v = validate(teamFieldsSchema, team);
+      if (!v.ok) {
+        socket.emit('authError', { msg: v.error });
+        if (cb) cb({ ok: false });
+        return;
+      }
+      await saveTeam({ ...team, id: team.id || 'T' + Date.now() });
       broadcastState();
+      if (cb) cb({ ok: true });
     });
 
-    socket.on('admin:removeTeam', async ({ teamId }) => {
+    socket.on('admin:removeTeam', async (payload, cb) => {
       if (denyIfNotAdmin(socket)) return;
-      await removeTeam(teamId);
+      const v = validate(teamIdSchema, payload);
+      if (!v.ok) {
+        socket.emit('authError', { msg: v.error });
+        if (cb) cb({ ok: false });
+        return;
+      }
+      await removeTeam(v.data.teamId);
       broadcastState();
+      if (cb) cb({ ok: true });
     });
 
     socket.on('admin:updateConfig', async (cfg) => {
@@ -309,7 +392,7 @@ function registerSocketHandlers(io) {
     });
 
     socket.on('disconnect', () => {
-      console.log(`[-] ${socket.id}`);
+      logger.info({ socketId: socket.id }, 'Socket disconnected');
     });
   });
 

@@ -1,5 +1,6 @@
+// PPL Season 7 — auctionRoutes.js — upgraded
 const express = require('express');
-const { getState } = require('../controllers/auctionController');
+const { getState, getHistory } = require('../controllers/auctionController');
 const {
   updateAuctionConfig,
   start,
@@ -14,6 +15,7 @@ const { requireAdminJwt } = require('../config/security');
 const router = express.Router();
 
 router.get('/state', getState);
+router.get('/auction/history', getHistory);
 
 router.post('/admin/start', requireAdminJwt, start);
 router.post('/admin/sold', requireAdminJwt, sold);

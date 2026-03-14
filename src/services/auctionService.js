@@ -11,12 +11,14 @@ const {
   resetAllTeams,
   persistTeams,
 } = require('../models/Team');
+// PPL Season 7 — auctionService.js — upgraded
 const {
   getAuctionState,
   setAuctionState,
   patchAuctionState,
-  getPreviousBidSnapshot,
   setPreviousBidSnapshot,
+  popUndoSnapshot,
+  clearUndoStack,
   persistAuctionState,
 } = require('../models/Auction');
 const { sanitizeConfig } = require('../utils/helpers');
@@ -158,7 +160,7 @@ async function placeBid({ teamId, amount }) {
 
 async function undoBid() {
   const auctionState = getAuctionState();
-  const snapshot = getPreviousBidSnapshot();
+  const snapshot = popUndoSnapshot();
 
   if (!snapshot || auctionState.phase !== 'live') {
     return false;
@@ -167,7 +169,6 @@ async function undoBid() {
   auctionState.currentBid = snapshot.currentBid;
   auctionState.leadingTeam = snapshot.leadingTeam;
   auctionState.bidHistory = snapshot.bidHistory;
-  setPreviousBidSnapshot(null);
   await persistAuctionState();
 
   return true;
@@ -195,10 +196,17 @@ async function markSold() {
   auctionState.timerEndsAt = null;
   auctionState.soldPlayers = [
     ...auctionState.soldPlayers,
-    { player, team: team.name, teamColor: team.color, teamLogo: team.logo, price },
+    {
+      player,
+      team: team.name,
+      teamColor: team.color,
+      teamLogo: team.logo,
+      price,
+      soldAt: Date.now(),
+    },
   ];
 
-  setPreviousBidSnapshot(null);
+  clearUndoStack();
   await Promise.all([persistPlayers(), persistTeams(), persistAuctionState()]);
   return { ok: true, player, team, price };
 }
@@ -214,7 +222,7 @@ async function markUnsold() {
 
   auctionState.phase = 'unsold';
   auctionState.timerEndsAt = null;
-  setPreviousBidSnapshot(null);
+  clearUndoStack();
   await Promise.all([persistPlayers(), persistAuctionState()]);
 
   return auctionState.currentPlayer;
@@ -282,8 +290,8 @@ async function revertLastSold() {
 
   auctionState.soldPlayers = soldPlayers.slice(0, -1);
   if (
-    auctionState.phase === 'sold'
-    && Number(auctionState.currentPlayer?.id) === soldPlayerId
+  auctionState.phase === 'sold' &&
+    Number(auctionState.currentPlayer?.id) === soldPlayerId
   ) {
     auctionState.phase = 'idle';
     auctionState.currentPlayer = null;
@@ -292,7 +300,7 @@ async function revertLastSold() {
     auctionState.bidHistory = [];
   }
   auctionState.timerEndsAt = null;
-  setPreviousBidSnapshot(null);
+  clearUndoStack();
 
   await Promise.all([persistPlayers(), persistTeams(), persistAuctionState()]);
   return { ok: true, player, team, price: revertPrice };
@@ -307,7 +315,7 @@ async function setIdle() {
     bidHistory: [],
     timerEndsAt: null,
   });
-  setPreviousBidSnapshot(null);
+  clearUndoStack();
   await persistAuctionState();
 }
 
@@ -326,8 +334,14 @@ async function resetAuctionAndTeams() {
     timerEndsAt: null,
   });
 
-  setPreviousBidSnapshot(null);
+  clearUndoStack();
   await persistAuctionState();
+}
+
+const { getUndoStack } = require('../models/Auction');
+
+function getUndoStackDepth() {
+  return getUndoStack().length;
 }
 
 module.exports = {
@@ -337,6 +351,7 @@ module.exports = {
   startAuction,
   placeBid,
   undoBid,
+  getUndoStackDepth,
   markSold,
   markUnsold,
   stopLiveTimer,

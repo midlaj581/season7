@@ -1,4 +1,6 @@
+// PPL Season 7 — db.js — upgraded
 const mysql = require('mysql2/promise');
+const { logger } = require('../utils/logger');
 const { URL } = require('url');
 
 let pool;
@@ -107,7 +109,7 @@ async function connectDB() {
   if (!hasAnyDbEnv()) {
     if (allowMemoryFallback) {
       memoryMode = true;
-      console.warn('[DB] No database env vars found. Starting in memory mode.');
+      logger.warn('No database env vars found. Starting in memory mode.');
       return;
     }
     throw new Error('Database configuration missing. Set DATABASE_URL (or MYSQL*/DB_* vars), or unset REQUIRE_DB.');
@@ -336,6 +338,8 @@ async function loadAuctionState() {
   if (!rows.length) return null;
 
   const row = rows[0];
+  const snapshotData = parseJSON(row.previous_bid_snapshot_json, null);
+  const undoStack = Array.isArray(snapshotData) ? snapshotData : (snapshotData ? [snapshotData] : []);
   return {
     auctionState: {
       phase: row.phase,
@@ -347,7 +351,8 @@ async function loadAuctionState() {
       timerSeconds: Number(row.timer_seconds || 10),
       timerEndsAt: row.timer_ends_at === null ? null : Number(row.timer_ends_at),
     },
-    previousBidSnapshot: parseJSON(row.previous_bid_snapshot_json, null),
+    previousBidSnapshot: undoStack[0] || null,
+    undoStack,
   };
 }
 
@@ -376,7 +381,7 @@ async function saveAuctionState({ auctionState, previousBidSnapshot }) {
       JSON.stringify(auctionState.soldPlayers || []),
       Number(auctionState.timerSeconds || 10),
       auctionState.timerEndsAt === null ? null : Number(auctionState.timerEndsAt),
-      JSON.stringify(previousBidSnapshot),
+      JSON.stringify(Array.isArray(previousBidSnapshot) ? previousBidSnapshot : (previousBidSnapshot ? [previousBidSnapshot] : [])),
     ],
   );
 }

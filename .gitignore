@@ -1,4 +1,8 @@
+# PPL Season 7 — .gitignore — upgraded
 node_modules/
-.env
-uploads/
 backups/
+.env
+*.log
+.DS_Store
+.env.local
+.env.*.local
