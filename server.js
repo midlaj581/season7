@@ -44,19 +44,9 @@ const io = new Server(server, {
 
 app.set('trust proxy', 1);
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "https://cdn.socket.io", "https://fonts.googleapis.com"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "https:", "blob:"],
-      connectSrc: ["'self'", "wss:", "ws:", "https://api.cloudinary.com"],
-      frameSrc: ["'none'"],
-      objectSrc: ["'none'"],
-      upgradeInsecureRequests: [],
-    },
-  },
+  // The current UI still uses inline scripts and inline event handlers.
+  // Re-enable stricter CSP only after moving those pages to non-inline JS.
+  contentSecurityPolicy: false,
 }));
 app.use(cors(corsOptions));
 app.use(apiLimiter);
