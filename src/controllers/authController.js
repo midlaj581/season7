@@ -12,7 +12,8 @@ async function verifyPassword(req, res) {
 }
 
 async function login(req, res) {
-  const ok = await verifyAdminPassword(req.body.password);
+  const password = req.body && (req.body.password != null ? req.body.password : req.body);
+  const ok = !!password && (await verifyAdminPassword(String(password)));
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
   const token = signAdminToken();

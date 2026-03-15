@@ -35,7 +35,7 @@ function parseJSON(value, fallback) {
 
 function parseUrlOptions(rawUrl) {
   const parsed = new URL(rawUrl);
-  const sslFromQuery = parsed.searchParams.get('ssl') || parsed.searchParams.get('sslmode');
+  const sslFromQuery = parsed.searchParams.get('ssl') || parsed.searchParams.get('sslmode') || parsed.searchParams.get('ssl-mode');
   const shouldUseSslFromQuery = ['true', '1', 'require', 'required'].includes(String(sslFromQuery || '').toLowerCase());
   const options = {
     host: parsed.hostname,
@@ -45,6 +45,7 @@ function parseUrlOptions(rawUrl) {
     database: decodeURIComponent((parsed.pathname || '/').replace(/^\//, '')),
     waitForConnections: true,
     connectionLimit: 10,
+    connectTimeout: Number(getEnv('DB_CONNECT_TIMEOUT_MS', '15000')),
   };
 
   if (!options.database) {
@@ -76,6 +77,7 @@ function getDbOptions(includeDatabase = true, forceNoDatabase = false) {
     password: getEnv('DB_PASSWORD', getEnv('MYSQLPASSWORD', '')),
     waitForConnections: true,
     connectionLimit: 10,
+    connectTimeout: Number(getEnv('DB_CONNECT_TIMEOUT_MS', '15000')),
   };
 
   if (includeDatabase) {
@@ -132,9 +134,12 @@ async function connectDB() {
   }
 
   memoryMode = false;
+  const { host, port, database } = fullOptions;
+  logger.info(`Connecting to MySQL at ${host}:${port} (database: ${database})`);
   pool = mysql.createPool(fullOptions);
 
-  await pool.query(`
+  try {
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS config_store (
       id TINYINT PRIMARY KEY,
       config_json LONGTEXT NOT NULL,
@@ -188,6 +193,12 @@ async function connectDB() {
 
   await ensureColumn('auction_state', 'timer_seconds', 'timer_seconds INT NOT NULL DEFAULT 10');
   await ensureColumn('auction_state', 'timer_ends_at', 'timer_ends_at BIGINT NULL');
+  } catch (err) {
+    if (err.code === 'ETIMEDOUT' || err.code === 'ECONNREFUSED' || err.message?.includes('ETIMEDOUT')) {
+      logger.error(`MySQL connection failed to ${host}:${port}. Check DATABASE_URL is reachable from this network (not localhost), and DB allows connections from your host.`);
+    }
+    throw err;
+  }
 }
 
 function getPool() {

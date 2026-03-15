@@ -324,7 +324,8 @@
 </div>
 
 <script>
-const socket = io();
+// Prefer polling first so login works behind proxies (e.g. Railway) when WebSocket is flaky
+const socket = io({ transports: ['polling', 'websocket'] });
 let lastBackupAt = null;
 let socketHealthy = false;
 let S = { auctionState:{phase:'idle',currentBid:0,bidHistory:[],soldPlayers:[]}, teams:[], players:[], config:{} };
@@ -434,13 +435,17 @@ async function doLogin() {
   }
 
   let ok = false;
-  try {
-    ok = await verifyPasswordViaSocket(pw);
-  } catch (_) {
+  // When socket is not connected (e.g. behind proxy), use HTTP so login still works
+  if (socket.connected) {
+    try {
+      ok = await verifyPasswordViaSocket(pw);
+    } catch (_) {}
+  }
+  if (!ok) {
     try {
       ok = await verifyPasswordViaHttp(pw);
     } catch (error) {
-      errEl.textContent = 'Server auth unavailable. Refresh and try again.';
+      errEl.textContent = 'Server auth unavailable. Check connection and try again.';
       return;
     }
   }
