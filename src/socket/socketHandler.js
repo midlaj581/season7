@@ -145,10 +145,17 @@ function registerSocketHandlers(io) {
       }
     });
 
-    socket.on('admin:verifyPassword', async ({ password }, cb) => {
-      const ok = await verifyAdminPassword(password);
-      socket.data.isAdmin = ok;
-      if (cb) cb({ ok });
+    socket.on('admin:verifyPassword', async (payload, cb) => {
+      const password = payload && (typeof payload === 'string' ? payload : payload.password);
+      try {
+        const ok = !!password && (await verifyAdminPassword(String(password)));
+        socket.data.isAdmin = ok;
+        if (typeof cb === 'function') cb({ ok });
+      } catch (err) {
+        logger.warn({ err: err.message }, 'admin:verifyPassword error');
+        socket.data.isAdmin = false;
+        if (typeof cb === 'function') cb({ ok: false });
+      }
     });
 
     socket.on('admin:startAuction', async (payload, cb) => {
