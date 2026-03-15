@@ -118,7 +118,7 @@ async function connectDB() {
   }
 
   const fullOptions = getDbOptions(true);
-  const { database } = fullOptions;
+  const { host, port, database } = fullOptions;
 
   // Some managed DB users cannot create databases; attempt and continue on access errors.
   if (!getEnv('DATABASE_URL', '') && !getEnv('MYSQL_URL', '') && !getEnv('MYSQL_URL_PUBLIC', '')) {
@@ -134,7 +134,6 @@ async function connectDB() {
   }
 
   memoryMode = false;
-  const { host, port, database } = fullOptions;
   logger.info(`Connecting to MySQL at ${host}:${port} (database: ${database})`);
   pool = mysql.createPool(fullOptions);
 
