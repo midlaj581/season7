@@ -17,7 +17,7 @@
     <div class="lc-title">ADMIN</div>
     <div class="lc-sub">PPL Auction · Control Panel</div>
     <input class="pw-in" id="pwIn" type="password" placeholder="Enter password" autocomplete="off"/>
-    <button class="pw-btn" onclick="doLogin()">Unlock →</button>
+    <button type="button" class="pw-btn" id="pwBtn" onclick="doLogin()">Unlock →</button>
     <div class="pw-err" id="pwErr"></div>
   </div>
 </div>
@@ -325,7 +325,12 @@
 
 <script>
 // Prefer polling first so login works behind proxies (e.g. Railway) when WebSocket is flaky
-const socket = io({ transports: ['polling', 'websocket'] });
+let socket;
+try {
+  socket = typeof io === 'function' ? io({ transports: ['polling', 'websocket'] }) : { connected: false, on: function(){}, emit: function(){} };
+} catch (e) {
+  socket = { connected: false, on: function(){}, emit: function(){} };
+}
 let lastBackupAt = null;
 let socketHealthy = false;
 let S = { auctionState:{phase:'idle',currentBid:0,bidHistory:[],soldPlayers:[]}, teams:[], players:[], config:{} };
@@ -427,39 +432,53 @@ async function verifyPasswordViaHttp(password) {
 }
 
 async function doLogin() {
-  const pw = (document.getElementById('pwIn').value || '').trim();
   const errEl = document.getElementById('pwErr');
-  if (!pw) {
-    errEl.textContent = 'Enter password';
-    return;
-  }
-
-  let ok = false;
-  // When socket is not connected (e.g. behind proxy), use HTTP so login still works
-  if (socket.connected) {
-    try {
-      ok = await verifyPasswordViaSocket(pw);
-    } catch (_) {}
-  }
-  if (!ok) {
-    try {
-      ok = await verifyPasswordViaHttp(pw);
-    } catch (error) {
-      errEl.textContent = 'Server auth unavailable. Check connection and try again.';
+  const btnEl = document.getElementById('pwBtn');
+  if (!errEl) return;
+  try {
+    const pw = (document.getElementById('pwIn').value || '').trim();
+    if (!pw) {
+      errEl.textContent = 'Enter password';
       return;
     }
-  }
+    errEl.textContent = 'Checking…';
+    errEl.style.color = '';
+    if (btnEl) btnEl.disabled = true;
 
-  if (ok) {
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('adminApp').style.display   = 'block';
-    sessionStorage.setItem('ppl_admin','1');
-    errEl.textContent = '';
-  } else {
-    errEl.textContent = 'Wrong password';
-    document.getElementById('pwIn').value = '';
-    setTimeout(() => document.getElementById('pwErr').textContent = '', 2500);
+    let ok = false;
+    if (typeof socket !== 'undefined' && socket.connected) {
+      try {
+        ok = await verifyPasswordViaSocket(pw);
+      } catch (_) {}
+    }
+    if (!ok) {
+      try {
+        ok = await verifyPasswordViaHttp(pw);
+      } catch (e) {
+        errEl.textContent = 'Server auth unavailable. Check connection and try again.';
+        errEl.style.color = '';
+        if (btnEl) btnEl.disabled = false;
+        return;
+      }
+    }
+
+    if (ok) {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('adminApp').style.display   = 'block';
+      sessionStorage.setItem('ppl_admin','1');
+      errEl.textContent = '';
+    } else {
+      errEl.textContent = 'Wrong password';
+      errEl.style.color = '';
+      document.getElementById('pwIn').value = '';
+      setTimeout(() => { errEl.textContent = ''; }, 2500);
+    }
+  } catch (e) {
+    errEl.textContent = 'Error: ' + (e && e.message ? e.message : 'Login failed');
+    errEl.style.color = '';
+    console.error('doLogin error', e);
   }
+  if (btnEl) btnEl.disabled = false;
 }
 if (sessionStorage.getItem('ppl_admin')==='1') {
   document.getElementById('loginScreen').style.display = 'none';
